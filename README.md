@@ -26,10 +26,40 @@ npm install
 cp .env.example .env
 ```
 
-4. Uygulamayı başlatın:
+4. `.env` dosyasını düzenleyin ve aşağıdaki değişkenleri ayarlayın:
+```env
+PORT=3000
+MONGODB_URI=mongodb://localhost:27017/mobilya
+JWT_SECRET=your_jwt_secret
+GOOGLE_AI_API_KEY=your_google_ai_api_key
+```
+
+5. MongoDB'yi kurun ve çalıştırın:
+   - MongoDB'yi [buradan](https://www.mongodb.com/try/download/community) indirin ve kurun
+   - MongoDB servisini başlatın
+
+6. Frontend bağımlılıklarını yükleyin:
 ```bash
+cd frontend
+npm install
+```
+
+7. Uygulamayı başlatın:
+```bash
+# Backend'i başlatmak için (ana dizinde)
+npm start
+
+# Frontend'i başlatmak için (frontend dizininde)
+cd frontend
 npm start
 ```
+
+## Gereksinimler
+
+- Node.js (v14 veya üzeri)
+- MongoDB (v4.4 veya üzeri)
+- npm veya yarn
+- Google AI API anahtarı (Gemini API için)
 
 ## Teknolojiler
 

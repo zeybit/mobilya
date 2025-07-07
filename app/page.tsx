@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import axios from 'axios';
 
 interface Product {
@@ -28,6 +28,13 @@ interface ExtractedFeatures {
   styles: string[];
   rooms: string[];
   productTypes: string[];
+  roomColors?: string[];
+  roomSize?: string;
+  budget?: string;
+  brand?: string;
+  material?: string;
+  quantity?: string;
+  purpose?: string;
 }
 
 interface RecommendationResponse {
@@ -95,16 +102,63 @@ export default function Home() {
   const [data, setData] = useState<RecommendationResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(true);
+  const recognitionRef = useRef<any>(null);
+
+  // Sesle giriş fonksiyonu
+  const handleMicClick = () => {
+    if (typeof window === 'undefined') return;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setSpeechSupported(false);
+      return;
+    }
+    if (!recognitionRef.current) {
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.lang = 'tr-TR';
+      recognitionRef.current.interimResults = false;
+      recognitionRef.current.maxAlternatives = 1;
+    }
+    const recognition = recognitionRef.current;
+    if (isListening) {
+      recognition.stop();
+      setIsListening(false);
+      return;
+    }
+    setIsListening(true);
+    recognition.start();
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setQuery(transcript);
+      setIsListening(false);
+    };
+    recognition.onerror = () => {
+      setIsListening(false);
+    };
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+  };
 
   const handleSearch = async () => {
     if (!query.trim()) return;
-    
+  
+    setData(null);  // <-- Burada eski sonuçları sıfırlıyoruz
     setLoading(true);
     setError(null);
+  
     try {
-      const response = await axios.get(`http://localhost:5000/api/recommendations?query=${encodeURIComponent(query)}`);
+      const response = await axios.get(`http://localhost:5000/api/recommendations?query=${encodeURIComponent(query)}`, {
+        timeout: 10000,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      });
+  
       console.log('Backend Response:', response.data);
-      
+  
       if (response.data && response.data.recommendations && response.data.extractedFeatures) {
         setData(response.data);
       } else if (response.data && response.data.message) {
@@ -116,16 +170,23 @@ export default function Home() {
       }
     } catch (error: any) {
       console.error('Error fetching recommendations:', error);
-      if (error.response && error.response.data && error.response.data.message) {
-        setError(error.response.data.message);
+  
+      if (error.code === 'ECONNABORTED') {
+        setError('İstek zaman aşımına uğradı. Lütfen tekrar deneyin.');
+      } else if (error.response) {
+        const errorMessage = error.response.data?.message || 'Sunucu hatası';
+        setError(errorMessage);
+      } else if (error.request) {
+        setError('Sunucuya ulaşılamıyor. Lütfen internet bağlantınızı kontrol edin.');
       } else {
-        setError('Öneriler alınırken bir hata oluştu');
+        setError('Bir hata oluştu. Lütfen tekrar deneyin.');
       }
       setData(null);
     } finally {
       setLoading(false);
     }
   };
+  
 
   return (
     <main className="min-h-screen p-8 bg-gray-50">
@@ -143,6 +204,16 @@ export default function Home() {
             className="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <button
+            type="button"
+            onClick={handleMicClick}
+            className={`px-3 py-3 rounded-lg border ${isListening ? 'bg-red-100 border-red-400 text-red-600 animate-pulse' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-100'} flex items-center`}
+            title="Sesle giriş"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v2m0 0h3m-3 0H9m6-6a3 3 0 11-6 0V7a3 3 0 016 0v5z" />
+            </svg>
+          </button>
+          <button
             onClick={handleSearch}
             disabled={loading}
             className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
@@ -150,6 +221,10 @@ export default function Home() {
             {loading ? 'Aranıyor...' : 'Ara'}
           </button>
         </div>
+
+        {!speechSupported && (
+          <div className="text-center text-red-500 mb-4">Tarayıcınızda sesli giriş desteklenmiyor.</div>
+        )}
 
         {loading && (
           <div className="text-center">
@@ -183,51 +258,118 @@ export default function Home() {
             )}
 
             {/* Çıkarılan Özellikler */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-2xl font-semibold mb-4">Çıkarılan Özellikler</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="p-4 bg-gray-50 rounded-lg">
-                  <h3 className="font-medium text-gray-700 mb-2">Renkler</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {data.extractedFeatures.colors.map((color, index) => (
-                      <span key={index} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                        {color}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <div className="p-4 bg-gray-50 rounded-lg">
-                  <h3 className="font-medium text-gray-700 mb-2">Stiller</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {data.extractedFeatures.styles.map((style, index) => (
-                      <span key={index} className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                        {style}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <div className="p-4 bg-gray-50 rounded-lg">
-                  <h3 className="font-medium text-gray-700 mb-2">Odalar</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {data.extractedFeatures.rooms.map((room, index) => (
-                      <span key={index} className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
-                        {room}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <div className="p-4 bg-gray-50 rounded-lg">
-                  <h3 className="font-medium text-gray-700 mb-2">Ürün Tipleri</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {data.extractedFeatures.productTypes.map((type, index) => (
-                      <span key={index} className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm">
-                        {type}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+  {/* Renkler */}
+  <div className="p-4 bg-gray-50 rounded-lg">
+    <h3 className="font-medium text-gray-700 mb-2">Renkler</h3>
+    <div className="flex flex-wrap gap-2">
+      {data.extractedFeatures.colors && data.extractedFeatures.colors.length > 0
+        ? data.extractedFeatures.colors.map((color, index) => (
+            <span key={index} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+              {color}
+            </span>
+          ))
+        : <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">Belirtilmemiş</span>
+      }
+    </div>
+  </div>
+  {/* Stiller */}
+  <div className="p-4 bg-gray-50 rounded-lg">
+    <h3 className="font-medium text-gray-700 mb-2">Stiller</h3>
+    <div className="flex flex-wrap gap-2">
+      {data.extractedFeatures.styles && data.extractedFeatures.styles.length > 0
+        ? data.extractedFeatures.styles.map((style, index) => (
+            <span key={index} className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+              {style}
+            </span>
+          ))
+        : <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">Belirtilmemiş</span>
+      }
+    </div>
+  </div>
+  {/* Odalar */}
+  <div className="p-4 bg-gray-50 rounded-lg">
+    <h3 className="font-medium text-gray-700 mb-2">Odalar</h3>
+    <div className="flex flex-wrap gap-2">
+      {data.extractedFeatures.rooms && data.extractedFeatures.rooms.length > 0
+        ? data.extractedFeatures.rooms.map((room, index) => (
+            <span key={index} className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
+              {room}
+            </span>
+          ))
+        : <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">Belirtilmemiş</span>
+      }
+    </div>
+  </div>
+  {/* Ürün Tipleri */}
+  <div className="p-4 bg-gray-50 rounded-lg">
+    <h3 className="font-medium text-gray-700 mb-2">Ürün Tipleri</h3>
+    <div className="flex flex-wrap gap-2">
+      {data.extractedFeatures.productTypes && data.extractedFeatures.productTypes.length > 0
+        ? data.extractedFeatures.productTypes.map((type, index) => (
+            <span key={index} className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm">
+              {type}
+            </span>
+          ))
+        : <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm">Belirtilmemiş</span>
+      }
+    </div>
+  </div>
+  {/* Oda Rengi */}
+  <div className="p-4 bg-gray-50 rounded-lg">
+    <h3 className="font-medium text-gray-700 mb-2">Oda Rengi</h3>
+    <div className="flex flex-wrap gap-2">
+      {data.extractedFeatures.roomColors && data.extractedFeatures.roomColors.length > 0
+        ? data.extractedFeatures.roomColors.map((color, index) => (
+            <span key={index} className="px-3 py-1 bg-pink-100 text-pink-800 rounded-full text-sm">
+              {color}
+            </span>
+          ))
+        : <span className="px-3 py-1 bg-pink-100 text-pink-800 rounded-full text-sm">Belirtilmemiş</span>
+      }
+    </div>
+  </div>
+
+ 
+  
+  {/* Oda Boyutu */}
+  <div className="p-4 bg-gray-50 rounded-lg">
+    <h3 className="font-medium text-gray-700 mb-2">Oda Boyutu</h3>
+    <div className="flex flex-wrap gap-2">
+      {data.extractedFeatures.roomSize
+        ? <span className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-sm">{data.extractedFeatures.roomSize}</span>
+        : <span className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-sm">Belirtilmemiş</span>
+      }
+    </div>
+  </div>
+  {/* Bütçe */}
+  <div className="p-4 bg-gray-50 rounded-lg">
+    <h3 className="font-medium text-gray-700 mb-2">Bütçe</h3>
+    <div className="flex flex-wrap gap-2">
+      {data.extractedFeatures.budget
+        ? <span className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm">{data.extractedFeatures.budget}</span>
+        : <span className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm">Belirtilmemiş</span>
+      }
+    </div>
+  </div>
+  
+  {/* Malzeme */}
+  <div className="p-4 bg-gray-50 rounded-lg">
+    <h3 className="font-medium text-gray-700 mb-2">Malzeme</h3>
+    <div className="flex flex-wrap gap-2">
+      {data.extractedFeatures.material
+        ? <span className="px-3 py-1 bg-yellow-200 text-yellow-900 rounded-full text-sm">{data.extractedFeatures.material}</span>
+        : <span className="px-3 py-1 bg-yellow-200 text-yellow-900 rounded-full text-sm">Belirtilmemiş</span>
+      }
+    </div>
+  </div>
+  
+
+  
+  
+</div>
+            
+           
 
             {/* Ürün Önerileri */}
             <div>

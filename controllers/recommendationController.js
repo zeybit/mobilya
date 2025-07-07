@@ -4,22 +4,49 @@ require('dotenv').config();
 
 const keywordMappings = {
     renk: {
-        beyaz: 'beyaz', siyah: 'siyah', gri: 'gri', kahverengi: 'kahverengi',
-        bej: 'bej', mavi: 'mavi', kırmızı: 'kırmızı', yeşil: 'yeşil', altın: 'altın'
+        beyaz: 'beyaz', white: 'beyaz',
+        siyah: 'siyah', black: 'siyah',
+        gri: 'gri', gray: 'gri', grey: 'gri',
+        kahverengi: 'kahverengi', brown: 'kahverengi',
+        bej: 'bej', beige: 'bej',
+        mavi: 'mavi', blue: 'mavi',
+        kırmızı: 'kırmızı', red: 'kırmızı',
+        yeşil: 'yeşil', green: 'yeşil',
+        altın: 'altın', gold: 'altın'
     },
     stil: {
-        modern: 'modern', klasik: 'klasik', minimalist: 'minimalist', vintage: 'vintage',
-        scandinav: 'scandinav', rustik: 'rustik', bohem: 'bohem', endüstriyel: 'endüstriyel'
+        modern: 'modern',
+        klasik: 'klasik', classic: 'klasik',
+        minimalist: 'minimalist',
+        vintage: 'vintage',
+        scandinav: 'scandinav', scandinavian: 'scandinav',
+        rustik: 'rustik', rustic: 'rustik',
+        bohem: 'bohem', bohemian: 'bohem',
+        endüstriyel: 'endüstriyel', industrial: 'endüstriyel'
     },
     oda: {
-        oturma: 'oturma odası', yatak: 'yatak odası', mutfak: 'mutfak',
-        çalışma: 'çalışma odası', yemek: 'yemek odası'
+        oturma: 'oturma odası', living: 'oturma odası', 'living room': 'oturma odası',
+        yatak: 'yatak odası', bedroom: 'yatak odası', 'bed room': 'yatak odası',
+        mutfak: 'mutfak', kitchen: 'mutfak',
+        çalışma: 'çalışma odası', study: 'çalışma odası', 'study room': 'çalışma odası',
+        yemek: 'yemek odası', dining: 'yemek odası', 'dining room': 'yemek odası',
+        çocuk: 'çocuk odası', child: 'çocuk odası', kids: 'çocuk odası', 'kids room': 'çocuk odası',
+        bahçe: 'bahçe', garden: 'bahçe'
     },
     ürün: {
-        koltuk: 'koltuk', kanepe: 'kanepe', sandalye: 'sandalye', masa: 'masa',
-        gardırop: 'gardırop', yatak: 'yatak', dolap: 'dolap', sehpa: 'sehpa',
-        kitaplık: 'kitaplık', raf: 'raf', komodin: 'komodin', puf: 'puf',
-        "televizyon ünitesi": 'televizyon ünitesi'
+        koltuk: 'koltuk', couch: 'koltuk', sofa: 'koltuk',
+        kanepe: 'kanepe', settee: 'kanepe',
+        sandalye: 'sandalye', chair: 'sandalye',
+        masa: 'masa', table: 'masa',
+        gardırop: 'gardırop', wardrobe: 'gardırop',
+        yatak: 'yatak', bed: 'yatak',
+        dolap: 'dolap', cupboard: 'dolap', closet: 'dolap',
+        sehpa: 'sehpa', coffee: 'sehpa', 'coffee table': 'sehpa',
+        kitaplık: 'kitaplık', bookshelf: 'kitaplık',
+        raf: 'raf', shelf: 'raf',
+        komodin: 'komodin', nightstand: 'komodin',
+        puf: 'puf', pouf: 'puf', ottoman: 'puf',
+        'televizyon ünitesi': 'televizyon ünitesi', 'tv unit': 'televizyon ünitesi', 'tv stand': 'televizyon ünitesi'
     }
 };
 
@@ -182,38 +209,41 @@ exports.getProductRecommendations = async (req, res) => {
 async function extractFeaturesWithAI(userInput) {
     try {
         const prompt = `
-Kullanıcının ürün arama girdisini analiz et ve aşağıdaki özellikleri çıkar:
+You are a multilingual furniture assistant. Extract the following features from the user's search input, no matter which language is used (Turkish, English, etc):
 
 Input: "${userInput}"
 
-Önemli Kurallar:
-1. Renk belirtilmişse, bunun ürün rengi mi yoksa oda rengi mi olduğunu belirle:
-   - Eğer renk ürünle ilgiliyse (örn: "mavi koltuk", "beyaz masa") -> color alanına ekle
-   - Eğer renk oda ile ilgiliyse (örn: "mavi evime", "beyaz odama") -> roomColor alanına ekle
-2. Stil belirtilmişse mutlaka çıkar (örn: "modern", "klasik", "minimalist")
-3. Ürün türü belirtilmişse mutlaka çıkar (örn: "koltuk", "dolap", "masa")
-4. Oda türü belirtilmişse çıkar (örn: "oturma odası", "mutfak", "yatak odası", "çocuk odası", "çalışma odası", "bahçe")
+Extract these features:
+- color: (product color, e.g. "beyaz", "white", "gri", "gray", "mavi", "blue")
+- room: (room type, e.g. "oturma odası", "living room", "çocuk odası", "kids room", "bahçe", "garden")
+- style: (style, e.g. "modern", "minimalist", "vintage", "industrial")
+- productType: (product type, e.g. "koltuk", "sofa", "couch", "masa", "table")
+- roomColor: (the color of the room, e.g. "beyaz", "white", "gri", "gray")
+- roomSize: (the size of the room, e.g. "küçük", "small", "büyük", "large", "orta", "medium")
+- budget: (budget or price range, e.g. "5000 TL", "$1000", "orta", "düşük", "yüksek", "low", "medium", "high")
+- brand: (brand name if mentioned)
+- material: (material, e.g. "ahşap", "wood", "metal", "fabric", "deri", "leather")
+- quantity: (number of products, e.g. "2", "iki", "two")
+- purpose: (intended use, e.g. "çalışmak için", "for working", "misafirler için", "for guests")
 
-Önemli Not: Oda türlerini tam olarak belirtilen şekilde çıkar:
-- "çocuk odası"
-- "çalışma odası"
-- "bahçe"
-- "oturma odası"
-- "yatak odası"
-- "mutfak"
-- "yemek odası"
-
-Sadece aşağıdaki gibi saf ve geçerli bir JSON döndür:
-
+Return only a valid JSON like this:
 {
   "color": "",
-  "roomColor": "",
   "room": "",
   "style": "",
   "productType": "",
-  "compatibleColors": [],
-  "reasoning": ""
-}`;
+  "roomColor": "",
+  "roomSize": "",
+  "budget": "",
+  "brand": "",
+  "material": "",
+  "quantity": "",
+  "purpose": ""
+}
+
+If a feature is not present, leave it as an empty string.
+Return only the JSON, no explanation.
+`;
 
         const response = await axios.post(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GOOGLE_AI_API_KEY}`,
@@ -225,163 +255,64 @@ Sadece aşağıdaki gibi saf ve geçerli bir JSON döndür:
         const jsonText = text.replace(/```json\n?|\n?```/g, '').trim();
         const features = JSON.parse(jsonText);
 
-        // Renk kontrolü ve normalizasyonu
-        let color = features.color?.toLowerCase().trim() || '';
-        let roomColor = features.roomColor?.toLowerCase().trim() || '';
-
-        // Eğer renk keywordMappings'de yoksa, kullanıcı girdisinde ara
-        if (!keywordMappings.renk[color]) {
-            const colorMatch = Object.entries(keywordMappings.renk).find(([key]) => 
-                userInput.toLowerCase().includes(key + ' koltuk') || 
-                userInput.toLowerCase().includes(key + ' masa') ||
-                userInput.toLowerCase().includes(key + ' dolap')
-            );
-            if (colorMatch) {
-                color = colorMatch[1];
-            } else {
-                color = '';
-            }
+        // Normalize LLM output using keywordMappings
+        function normalizeLLMValue(val, map) {
+            if (!val) return '';
+            val = val.toLowerCase().trim();
+            return map[val] || val;
         }
 
-        // Oda rengi kontrolü
-        if (!keywordMappings.renk[roomColor]) {
-            const roomColorMatch = Object.entries(keywordMappings.renk).find(([key]) => 
-                userInput.toLowerCase().includes(key + ' evime') || 
-                userInput.toLowerCase().includes(key + ' odama') ||
-                userInput.toLowerCase().includes(key + ' eve')
-            );
-            if (roomColorMatch) {
-                roomColor = roomColorMatch[1];
-            } else {
-                roomColor = '';
-            }
-        }
-
-        // Stil kontrolü ve normalizasyonu
-        let style = features.style?.toLowerCase().trim() || '';
-        if (!keywordMappings.stil[style]) {
-            const styleMatch = Object.entries(keywordMappings.stil).find(([key]) => 
-                userInput.toLowerCase().includes(key)
-            );
-            if (styleMatch) {
-                style = styleMatch[1];
-            } else {
-                style = '';
-            }
-        }
-
-        // Ürün türü kontrolü ve normalizasyonu
-        let productType = features.productType?.toLowerCase().trim() || '';
-        if (!keywordMappings.ürün[productType]) {
-            const productMatch = Object.entries(keywordMappings.ürün).find(([key]) => 
-                userInput.toLowerCase().includes(key)
-            );
-            if (productMatch) {
-                productType = productMatch[1];
-            } else {
-                productType = '';
-            }
-        }
-
-        // Oda türü kontrolü ve normalizasyonu
-        let room = features.room?.toLowerCase().trim() || '';
-        const validRooms = [
-            'çocuk odası',
-            'çalışma odası',
-            'bahçe',
-            'oturma odası',
-            'yatak odası',
-            'mutfak',
-            'yemek odası'
-        ];
-
-        if (!validRooms.includes(room)) {
-            const roomMatch = validRooms.find(validRoom => 
-                userInput.toLowerCase().includes(validRoom)
-            );
-            if (roomMatch) {
-                room = roomMatch;
-            } else {
-                room = '';
-            }
-        }
-
-        // Eğer oda rengi belirtilmişse, uyumlu renkleri ekle
-        let compatibleColors = [];
-        if (roomColor) {
-            compatibleColors = colorCompatibility[roomColor] || [];
-        }
+        const color = normalizeLLMValue(features.color, keywordMappings.renk);
+        const style = normalizeLLMValue(features.style, keywordMappings.stil);
+        const productType = normalizeLLMValue(features.productType, keywordMappings.ürün);
+        const room = normalizeLLMValue(features.room, keywordMappings.oda);
+        const roomColor = normalizeLLMValue(features.roomColor, keywordMappings.renk);
+        const roomSize = features.roomSize?.toLowerCase().trim() || '';
+        const budget = features.budget?.toLowerCase().trim() || '';
+        const material = features.material?.toLowerCase().trim() || '';
 
         return {
             colors: color ? [color] : [],
-            roomColors: roomColor ? [roomColor] : [],
             styles: style ? [style] : [],
             rooms: room ? [room] : [],
             productTypes: productType ? [productType] : [],
-            colorCompatibility: compatibleColors
+            roomColors: roomColor ? [roomColor] : [],
+            roomSize,
+            budget,
+            material,
+            colorCompatibility: colorCompatibility[color] || []
         };
-
     } catch (error) {
-        console.error('Gemini API Hatası:', {
+        console.error('LLM/AI Hatası:', {
             message: error.message,
             response: error.response?.data,
             status: error.response?.status
         });
-
-        // Hata durumunda kullanıcı girdisinden özellikleri çıkarmaya çalış
+        // Fallback: eski keywordMappings tabanlı çıkarım
         const input = userInput.toLowerCase();
-        
-        // Ürün rengi kontrolü
         const colors = Object.entries(keywordMappings.renk)
-            .filter(([key]) => 
-                input.includes(key + ' koltuk') || 
-                input.includes(key + ' masa') ||
-                input.includes(key + ' dolap')
-            )
+            .filter(([key]) => input.includes(key))
             .map(([_, value]) => value);
-
-        // Oda rengi kontrolü
-        const roomColors = Object.entries(keywordMappings.renk)
-            .filter(([key]) => 
-                input.includes(key + ' evime') || 
-                input.includes(key + ' odama') ||
-                input.includes(key + ' eve')
-            )
-            .map(([_, value]) => value);
-
         const styles = Object.entries(keywordMappings.stil)
             .filter(([key]) => input.includes(key))
             .map(([_, value]) => value);
-
-        // Oda türü kontrolü
-        const validRooms = [
-            'çocuk odası',
-            'çalışma odası',
-            'bahçe',
-            'oturma odası',
-            'yatak odası',
-            'mutfak',
-            'yemek odası'
-        ];
-        const rooms = validRooms.filter(room => input.includes(room));
-
+        const rooms = Object.entries(keywordMappings.oda)
+            .filter(([key]) => input.includes(key))
+            .map(([_, value]) => value);
         const productTypes = Object.entries(keywordMappings.ürün)
             .filter(([key]) => input.includes(key))
             .map(([_, value]) => value);
-
-        // Oda rengi için uyumlu renkleri bul
-        let compatibleColors = [];
-        if (roomColors.length > 0) {
-            compatibleColors = colorCompatibility[roomColors[0]] || [];
-        }
-
+        // Basit fallback, diğer yeni alanlar boş döner
         return {
             colors,
-            roomColors,
             styles,
             rooms,
             productTypes,
-            colorCompatibility: compatibleColors
+            roomColors: [],
+            roomSize: '',
+            budget: '',
+            material: '',
+            colorCompatibility: colors.length ? (colorCompatibility[colors[0]] || []) : []
         };
     }
 }
@@ -403,19 +334,42 @@ function normalizeText(text) {
         .trim();
 }
 
+function parseBudget(budgetStr) {
+    if (!budgetStr) return null;
+    // "25 bin", "25k", "25.000 TL" gibi varyasyonları da destekle
+    let str = budgetStr.toLowerCase().replace(/tl|₺|\$/g, '').trim();
+    str = str.replace(/,/g, '.');
+    // "bin" veya "k" varsa çarpan uygula
+    if (str.includes('bin')) {
+        str = str.replace(/[^0-9.]/g, '');
+        let num = parseFloat(str);
+        if (!isNaN(num)) return num * 1000;
+    }
+    if (str.includes('k')) {
+        str = str.replace(/[^0-9.]/g, '');
+        let num = parseFloat(str);
+        if (!isNaN(num)) return num * 1000;
+    }
+    // Sadece rakam ve nokta
+    let clean = str.replace(/[^0-9.]/g, '');
+    if (!clean) return null;
+    let num = parseFloat(clean);
+    if (isNaN(num)) return null;
+    return num;
+}
+
 function scoreProducts(products, features) {
-    // features objesi undefined veya null ise boş bir obje kullan
     features = features || {};
-    
-    // Tüm özellikleri varsayılan boş array'lerle başlat
     features.colors = features.colors || [];
     features.roomColors = features.roomColors || [];
     features.styles = features.styles || [];
     features.rooms = features.rooms || [];
     features.productTypes = features.productTypes || [];
     features.colorCompatibility = features.colorCompatibility || [];
+    features.roomSize = features.roomSize || '';
+    features.budget = features.budget || '';
+    features.material = features.material || '';
 
-    // Kategori eşleştirme için mapping
     const categoryMapping = {
         'çocuk odası': '68237650d79c9eb5f5520d62',
         'bahçe': '68237650d79c9eb5f5520d63',
@@ -432,6 +386,9 @@ function scoreProducts(products, features) {
         const prodColor = normalizeText(product.color || '');
         const productName = normalizeText(product.name);
         const productDesc = normalizeText(product.description);
+        const prodMaterial = normalizeText(product.material || '');
+        const prodRoomSize = normalizeText(product.roomSize || '');
+        const prodBudget = normalizeText(product.budget || '');
 
         // Ürün rengi eşleşmesi
         if (features.colors.length) {
@@ -453,15 +410,12 @@ function scoreProducts(products, features) {
             totalCriteria++;
             const roomColor = features.roomColors[0];
             const compatibleColors = features.colorCompatibility || [];
-            
-            // Ürün rengi oda rengiyle uyumlu mu kontrol et
             const isCompatible = compatibleColors.some(compatibleColor => {
                 const normalizedCompatibleColor = normalizeText(compatibleColor);
                 return prodColor === normalizedCompatibleColor || 
                        productName.includes(normalizedCompatibleColor) ||
                        productDesc.includes(normalizedCompatibleColor);
             });
-
             if (isCompatible) {
                 score += 25;
                 matchCount++;
@@ -474,16 +428,14 @@ function scoreProducts(products, features) {
             const productCategoryId = product.category?._id?.toString();
             const match = features.rooms.some(room => {
                 const normalizedRoom = normalizeText(room);
-                // Önce kategori ID'si ile eşleştirme yap
                 if (categoryMapping[normalizedRoom] === productCategoryId) {
                     return true;
                 }
-                // Sonra kategori adı ile eşleştirme yap
                 const productCategoryName = normalizeText(product.category?.name || '');
                 return productCategoryName === normalizedRoom;
             });
             if (match) { 
-                score += 20; // Kategori eşleşmesi için puanı artırdım
+                score += 20;
                 matchCount++; 
             }
         }
@@ -507,12 +459,10 @@ function scoreProducts(products, features) {
             totalCriteria++;
             const typeMatch = features.productTypes.some(type => {
                 const normalizedType = normalizeText(type);
-                // Bileşik ürün türü kontrolü (örn: "köşe koltuk")
                 if (type.includes(' ')) {
                     return productName.includes(normalizedType) || 
                            productDesc.includes(normalizedType);
                 }
-                // Tek kelimelik ürün türü kontrolü
                 const words = productName.split(' ');
                 return words.some(word => normalizeText(word) === normalizedType) || 
                        productName.includes(normalizedType) ||
@@ -521,86 +471,72 @@ function scoreProducts(products, features) {
             if (typeMatch) { score += 15; matchCount++; }
         }
 
-        // Hiç kriter yoksa
+        // Oda boyutu eşleşmesi
+        if (features.roomSize) {
+            totalCriteria++;
+            const sizeMatch = prodRoomSize === normalizeText(features.roomSize) ||
+                productName.includes(normalizeText(features.roomSize)) ||
+                productDesc.includes(normalizeText(features.roomSize));
+            if (sizeMatch) { score += 8; matchCount++; }
+        }
+
+        // Bütçe eşleşmesi
+        if (features.budget) {
+            totalCriteria++;
+            const parsedBudget = parseBudget(features.budget);
+            let budgetMatch = false;
+            if (parsedBudget && product.price) {
+                budgetMatch = product.price <= parsedBudget;
+            } else {
+                budgetMatch = prodBudget === normalizeText(features.budget) ||
+                    productName.includes(normalizeText(features.budget)) ||
+                    productDesc.includes(normalizeText(features.budget));
+            }
+            if (budgetMatch) { score += 8; matchCount++; }
+        }
+
+        // Malzeme eşleşmesi
+        if (features.material) {
+            totalCriteria++;
+            const materialMatch = prodMaterial === normalizeText(features.material) ||
+                productName.includes(normalizeText(features.material)) ||
+                productDesc.includes(normalizeText(features.material));
+            if (materialMatch) { score += 8; matchCount++; }
+        }
+
         if (!totalCriteria) return { product, score: 0 };
-
-        // Eşleşme yoksa
         if (!matchCount) return { product, score: 0 };
-
-        // Çoklu kriter kontrolü
-        const hasAllRequiredMatches = () => {
-            // Ürün rengi kontrolü
-            if (features.colors.length) {
-                const hasColor = features.colors.some(color => {
-                    const normalizedColor = normalizeText(color);
-                    return prodColor === normalizedColor || 
-                           productName.includes(normalizedColor) ||
-                           productDesc.includes(normalizedColor);
-                });
-                if (!hasColor) return false;
-            }
-
-            // Ürün türü kontrolü
-            if (features.productTypes.length) {
-                const hasType = features.productTypes.some(type => {
-                    const normalizedType = normalizeText(type);
-                    if (type.includes(' ')) {
-                        return productName.includes(normalizedType) || 
-                               productDesc.includes(normalizedType);
-                    }
-                    const words = productName.split(' ');
-                    return words.some(word => normalizeText(word) === normalizedType) || 
-                           productName.includes(normalizedType) ||
-                           productDesc.includes(normalizedType);
-                });
-                if (!hasType) return false;
-            }
-
-            // Stil kontrolü
-            if (features.styles.length) {
-                const hasStyle = product.tags?.some(tag =>
-                    features.styles.some(style => 
-                        normalizeText(tag.name) === normalizeText(style)
-                    )
-                ) || features.styles.some(style => 
-                    productName.includes(normalizeText(style)) ||
-                    productDesc.includes(normalizeText(style))
-                );
-                if (!hasStyle) return false;
-            }
-
-            return true;
-        };
-
-        // Eğer gerekli eşleşmeler yoksa ürünü ele
-        if (!hasAllRequiredMatches()) {
-            return { product, score: 0 };
-        }
-
-        // Bonus puan: Tüm kriterler eşleşiyorsa
-        if (matchCount === totalCriteria) {
-            score += 10;
-        }
-
         return { product, score: Math.round(score * (matchCount / totalCriteria)) };
     });
 }
 
 function generateRecommendationMessage(f) {
-    if (f.colors.length && f.productTypes.length) {
-        return `İstediğiniz ${f.colors[0]} ${f.productTypes[0]} için öneriler:`;
+    let msg = '';
+    if (f.colors && f.colors.length && f.productTypes && f.productTypes.length) {
+        msg += `İstediğiniz ${f.colors[0]} ${f.productTypes[0]}`;
+    } else if (f.styles && f.styles.length && f.colors && f.colors.length) {
+        msg += `${f.styles[0]} stilde ${f.colors[0]} renkli ürünler`;
+    } else if (f.styles && f.styles.length) {
+        msg += `${f.styles[0]} stildeki ürünler`;
+    } else if (f.rooms && f.rooms.length) {
+        msg += `${f.rooms[0]} için ürünler`;
+    } else if (f.colors && f.colors.length) {
+        msg += `${f.colors[0]} renkli ürünler`;
+    } else {
+        msg += 'Sizin için önerilen ürünler';
     }
-    if (f.styles.length && f.colors.length) {
-        return `${f.styles[0]} stilde ${f.colors[0]} renkli ürünler için öneriler:`;
+    if (f.roomColors && f.roomColors.length) {
+        msg += ` (Oda rengi: ${f.roomColors[0]})`;
     }
-    if (f.styles.length) {
-        return `${f.styles[0]} stildeki ürünler için öneriler:`;
+    if (f.roomSize) {
+        msg += `, oda boyutu: ${f.roomSize}`;
     }
-    if (f.rooms.length) {
-        return `${f.rooms[0]} için öneriler:`;
+    if (f.budget) {
+        msg += `, bütçe: ${f.budget}`;
     }
-    if (f.colors.length) {
-        return `${f.colors[0]} renkli ürünler için öneriler:`;
+    if (f.material) {
+        msg += `, malzeme: ${f.material}`;
     }
-    return 'Sizin için önerilen ürünler:';
+    msg += ' için öneriler:';
+    return msg;
 }

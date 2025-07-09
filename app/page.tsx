@@ -41,7 +41,7 @@ interface RecommendationResponse {
   recommendations: Product[];
   extractedFeatures: ExtractedFeatures;
   recommendationMessage: string | null;
-  isExactMatch: boolean;
+  isExactMatch?: boolean;
 }
 
 // Slider komponenti
@@ -373,9 +373,7 @@ export default function Home() {
 
             {/* Ürün Önerileri */}
             <div>
-              <h2 className="text-2xl font-semibold mb-4">
-                {data.isExactMatch ? 'Tam Eşleşen Ürünler' : 'Önerilen Ürünler'}
-              </h2>
+              <h2 className="text-2xl font-semibold mb-4">Önerilen Ürünler</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {data.recommendations.map((product) => (
                   <div key={product._id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300 relative">

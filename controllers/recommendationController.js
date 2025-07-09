@@ -154,15 +154,28 @@ exports.getProductRecommendations = async (req, res) => {
         }
 
         if (scoredProducts.length === 0) {
+            // Kullanıcıdan alınan özellikleri birleştirerek mesaj oluştur
+            let notFoundMsg = 'Aradığınız kriterlerde ürün bulunamadı.';
+            if (extractedFeatures.colors.length && extractedFeatures.productTypes.length && extractedFeatures.budget) {
+                notFoundMsg = `Belirttiğiniz bütçede (${extractedFeatures.budget}) ${extractedFeatures.colors[0]} ${extractedFeatures.productTypes[0]} bulunamadı.`;
+            } else if (extractedFeatures.budget && extractedFeatures.productTypes.length) {
+                notFoundMsg = `Belirttiğiniz bütçede (${extractedFeatures.budget}) ${extractedFeatures.productTypes[0]} bulunamadı.`;
+            } else if (extractedFeatures.budget) {
+                notFoundMsg = `Belirttiğiniz bütçede (${extractedFeatures.budget}) ürün bulunamadı.`;
+            }
             return res.status(200).json({ 
-                message: 'Aramanıza uygun ürün bulunamadı',
+                message: notFoundMsg,
                 recommendations: [],
                 extractedFeatures,
-                recommendationMessage: 'Üzgünüz, aramanıza uygun ürün bulunamadı.',
+                recommendationMessage: notFoundMsg,
                 isExactMatch: false,
                 colorCompatibility: []
             });
         }
+
+        // Skorlanan ürünleri tam eşleşen ve önerilen olarak ayır
+        // const exactMatches = scoredProducts.filter(...);
+        // const recommended = scoredProducts.filter(...);
 
         const msg = generateRecommendationMessage(extractedFeatures);
 
@@ -318,6 +331,7 @@ Return only the JSON, no explanation.
 }
 
 function normalizeText(text) {
+    if (!text) return '';
     return text.toLowerCase()
         .replace(/ı/g, 'i')
         .replace(/ğ/g, 'g')
@@ -454,7 +468,7 @@ function scoreProducts(products, features) {
             if (styleMatch) { score += 12; matchCount++; }
         }
 
-        // Ürün türü eşleşmesi
+        // Ürün tipi eşleşmesi
         if (features.productTypes.length) {
             totalCriteria++;
             const typeMatch = features.productTypes.some(type => {
@@ -502,6 +516,32 @@ function scoreProducts(products, features) {
                 productName.includes(normalizeText(features.material)) ||
                 productDesc.includes(normalizeText(features.material));
             if (materialMatch) { score += 8; matchCount++; }
+        }
+
+        // Ürün tipi zorunlu kontrolü
+        if (features.productTypes.length) {
+            const typeMatch = features.productTypes.some(type => {
+                const normalizedType = normalizeText(type);
+                if (type.includes(' ')) {
+                    return productName.includes(normalizedType) || 
+                           productDesc.includes(normalizedType);
+                }
+                const words = productName.split(' ');
+                return words.some(word => normalizeText(word) === normalizedType) || 
+                       productName.includes(normalizedType) ||
+                       productDesc.includes(normalizedType);
+            });
+            if (!typeMatch) {
+                return { product, score: 0 }; // Ürün tipi eşleşmiyorsa, skor 0
+            }
+        }
+
+        // Bütçe kontrolü: Eğer bütçe varsa ve ürün fiyatı bütçeden yüksekse, ürünü eliyoruz
+        if (features.budget) {
+            const parsedBudget = parseBudget(features.budget);
+            if (parsedBudget && product.price && product.price > parsedBudget) {
+                return { product, score: 0 };
+            }
         }
 
         if (!totalCriteria) return { product, score: 0 };

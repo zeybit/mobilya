@@ -51,7 +51,7 @@ npm start
 
 # Frontend'i başlatmak için (frontend dizininde)
 cd frontend
-npm start
+npm run dev 
 ```
 
 ## Gereksinimler

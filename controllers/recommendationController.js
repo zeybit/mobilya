@@ -95,11 +95,11 @@ exports.getProductRecommendations = async (req, res) => {
 
         const extractedFeatures = await extractFeaturesWithAI(userInput);
         console.log('Çıkarılan özellikler:', extractedFeatures); // Debug log
-
-        const products = await Product.find().populate('category').populate('tags');
+//sadece stokta olan ürünleri getir
+        const products = await Product.find({ stock: { $gt: 0 } }).populate('category').populate('tags');
         console.log('Bulunan ürün sayısı:', products.length); // Debug log
 
-        const scoredProducts = scoreProducts(products, extractedFeatures)
+        const scoredProducts = scoreProducts(products, extractedFeatures, userInput)
             .filter(p => p.score > 0)
             .sort((a, b) => b.score - a.score)
             .slice(0, 5)
@@ -134,7 +134,7 @@ exports.getProductRecommendations = async (req, res) => {
             if (extractedFeatures.colors.length === 0 && 
                 extractedFeatures.styles.length === 0 && 
                 extractedFeatures.productTypes.length === 0) {
-                const rescoredProducts = scoreProducts(products, directFeatures)
+                const rescoredProducts = scoreProducts(products, directFeatures, userInput)
                     .filter(p => p.score > 0)
                     .sort((a, b) => b.score - a.score)
                     .slice(0, 5)
@@ -284,6 +284,19 @@ Return only the JSON, no explanation.
         const budget = features.budget?.toLowerCase().trim() || '';
         const material = features.material?.toLowerCase().trim() || '';
 
+        // Oda boyutu (en x boy x yükseklik) gibi bir formatı yakala
+        let roomDimensions = null;
+        // Türkçe ve İngilizce varyasyonları destekle
+        const roomSizeRegex = /(oda boyutu|room size|oda ölçüsü|room dimensions)\s*[:=\-]?\s*(\d{2,4})[x×](\d{2,4})(?:[x×](\d{2,4}))?/i;
+        const match = userInput.match(roomSizeRegex);
+        if (match) {
+            roomDimensions = {
+                width: parseInt(match[2], 10),
+                depth: parseInt(match[3], 10),
+                height: match[4] ? parseInt(match[4], 10) : undefined
+            };
+        }
+
         return {
             colors: color ? [color] : [],
             styles: style ? [style] : [],
@@ -293,7 +306,8 @@ Return only the JSON, no explanation.
             roomSize,
             budget,
             material,
-            colorCompatibility: colorCompatibility[color] || []
+            colorCompatibility: colorCompatibility[color] || [],
+            roomDimensions
         };
     } catch (error) {
         console.error('LLM/AI Hatası:', {
@@ -372,7 +386,7 @@ function parseBudget(budgetStr) {
     return num;
 }
 
-function scoreProducts(products, features) {
+function scoreProducts(products, features, userInput = '') {
     features = features || {};
     features.colors = features.colors || [];
     features.roomColors = features.roomColors || [];
@@ -383,6 +397,7 @@ function scoreProducts(products, features) {
     features.roomSize = features.roomSize || '';
     features.budget = features.budget || '';
     features.material = features.material || '';
+    features.roomDimensions = features.roomDimensions || null; // {width, depth, height}
 
     const categoryMapping = {
         'çocuk odası': '68237650d79c9eb5f5520d62',
@@ -394,7 +409,20 @@ function scoreProducts(products, features) {
         'yemek odası': '68237650d79c9eb5f5520d68'
     };
 
+    function isProductFitToRoom(product, roomDimensions) {
+        if (!roomDimensions) return true;
+        if (!product.width || !product.depth) return true;
+        if (product.width > roomDimensions.width || product.depth > roomDimensions.depth) return false;
+        if (roomDimensions.height && product.height && product.height > roomDimensions.height) return false;
+        return true;
+    }
+
     return products.map(product => {
+        // Oda uygunluk kontrolü (en başta uygunsuzsa skor 0)
+        if (features.roomDimensions && !isProductFitToRoom(product, features.roomDimensions)) {
+            return { product, score: 0 };
+        }
+
         let score = 0, matchCount = 0, totalCriteria = 0;
         const text = (product.name + ' ' + product.description).toLowerCase();
         const prodColor = normalizeText(product.color || '');
@@ -518,6 +546,52 @@ function scoreProducts(products, features) {
             if (materialMatch) { score += 8; matchCount++; }
         }
 
+        // Arama sorgusundaki kelimeler ürün adı/açıklamasında geçiyorsa ekstra puan
+        if (userInput) {
+            const queryWords = userInput.split(/\s+/).map(w => w.trim().toLowerCase()).filter(Boolean);
+            const allInNameOrDesc = queryWords.every(word =>
+                productName.includes(word) || productDesc.includes(word)
+            );
+            if (allInNameOrDesc) {
+                score += 20;
+                matchCount++;
+            }
+            // Arama sorgusu ürün adı/açıklamasında bir alt string olarak geçiyorsa ekstra puan
+            const normalizedQuery = userInput.trim().toLowerCase();
+            if (productName.includes(normalizedQuery) || productDesc.includes(normalizedQuery)) {
+                score += 20;
+                matchCount++;
+            }
+        }
+
+        // Arama sorgusunda moduleCount gibi bir ifade varsa ve ürünün moduleCount'u ile eşleşiyorsa ekstra puan
+        if (userInput) {
+            // Regex ile 1+1, 3+3+1+1 gibi ifadeleri bul
+            const moduleCountMatch = userInput.match(/\d(\+\d)+/g);
+            if (moduleCountMatch) {
+                const moduleCountQuery = moduleCountMatch[0];
+                // Ürünün moduleCount'u hem ana alan hem extraAttributes içinde olabilir
+                const productModuleCount = (product.moduleCount || (product.extraAttributes && product.extraAttributes.moduleCount) || '').toString().toLowerCase();
+                if (productModuleCount === moduleCountQuery) {
+                    score += 20;
+                    matchCount++;
+                }
+            }
+        }
+
+        // Arama sorgusunda X kapaklı gibi bir ifade varsa ve ürünün doorCount'u ile eşleşiyorsa ekstra puan
+        if (userInput) {
+            const doorCountMatch = userInput.match(/(\d+)\s*kapaklı/);
+            if (doorCountMatch) {
+                const doorCountQuery = parseInt(doorCountMatch[1], 10);
+                const productDoorCount = Number(product.doorCount || (product.extraAttributes && product.extraAttributes.doorCount));
+                if (productDoorCount === doorCountQuery) {
+                    score += 20;
+                    matchCount++;
+                }
+            }
+        }
+
         // Ürün tipi zorunlu kontrolü
         if (features.productTypes.length) {
             const typeMatch = features.productTypes.some(type => {
@@ -544,6 +618,8 @@ function scoreProducts(products, features) {
             }
         }
 
+        // Eğer sadece moduleCount eşleşmesi varsa ve başka kriter yoksa, yine de skoru sıfırdan büyük döndür
+        if (!totalCriteria && score > 0) return { product, score };
         if (!totalCriteria) return { product, score: 0 };
         if (!matchCount) return { product, score: 0 };
         return { product, score: Math.round(score * (matchCount / totalCriteria)) };

@@ -30,6 +30,38 @@ const productSchema = new mongoose.Schema({
         type: Number,
         required: [true, 'Stok miktarı zorunludur'],
         default: 0
+    },
+    width: {
+        type: Number,
+        required: false // Opsiyonel, bazı ürünlerde olmayabilir
+    },
+    depth: {
+        type: Number,
+        required: false
+    },
+    height: {
+        type: Number,
+        required: false
+    },
+    capacity: {
+        type: Number,
+        required: false
+    },
+    doorCount: {
+        type: Number,
+        required: false
+    },
+    materialType: {
+        type: String,
+        required: false
+    },
+    extraAttributes: {
+        type: mongoose.Schema.Types.Mixed,
+        required: false
+    },
+    color: {
+        type: String,
+        required: false
     }
 }, {
     timestamps: true,

@@ -21,6 +21,13 @@ interface Product {
   stock: number;
   color: string;
   isRecommended?: boolean;
+  width?: number;
+  depth?: number;
+  height?: number;
+  doorCount?: number;
+  capacity?: number;
+  material?: string;
+  extraAttributes?: Record<string, any>;
 }
 
 interface ExtractedFeatures {
@@ -29,7 +36,6 @@ interface ExtractedFeatures {
   rooms: string[];
   productTypes: string[];
   roomColors?: string[];
-  roomSize?: string;
   budget?: string;
   brand?: string;
   material?: string;
@@ -144,20 +150,22 @@ export default function Home() {
   const handleSearch = async () => {
     if (!query.trim()) return;
   
-    setData(null);  // <-- Burada eski sonuçları sıfırlıyoruz
+    setData(null);
     setLoading(true);
     setError(null);
   
     try {
-      const response = await axios.get(`http://localhost:5000/api/recommendations?query=${encodeURIComponent(query)}`, {
-        timeout: 10000,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
+      const params = new URLSearchParams({ query });
+      const response = await axios.get(
+        `http://localhost:5000/api/recommendations?${params.toString()}`,
+        {
+          timeout: 10000,
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
         }
-      });
-  
-      console.log('Backend Response:', response.data);
+      );
   
       if (response.data && response.data.recommendations && response.data.extractedFeatures) {
         setData(response.data);
@@ -194,13 +202,26 @@ export default function Home() {
         <h1 className="text-4xl font-bold text-center mb-8 text-gray-800">
           Mobilya Önerileri
         </h1>
-        
-        <div className="flex gap-4 mb-8">
+        {/* Arama kutusu açıklaması */}
+        <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg text-gray-700">
+          <p className="mb-2 font-medium">Aradığınız ürünü ve isteğe bağlı olarak oda boyutunu girin.</p>
+          <ul className="list-disc list-inside text-sm mb-2">
+            <li>'Beyaz modern koltuk oda boyutu: 300x400x250'</li>
+            <li>'4 kapaklı mdf gardırop room size: 250x350x240'</li>
+            <li>'Bohem 3+3+1+1 koltuk takımı'</li>
+          </ul>
+          <p className="text-sm">Oda boyutunu belirtmek için:<br/>
+            <span className="ml-2">- Türkçe: <b>oda boyutu: ENxBOYxYÜKSEKLİK</b></span><br/>
+            <span className="ml-2">- İngilizce: <b>room size: WIDTHxDEPTHxHEIGHT</b></span><br/>
+            (Örn: oda boyutu: 300x400x250)
+          </p>
+        </div>
+        <div className="flex gap-4 mb-8 flex-wrap">
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Örn: modern beyaz oturma odası koltuk"
+            placeholder="Örn: Beyaz koltuk oda boyutu: 300x400x250"
             className="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <button
@@ -209,9 +230,7 @@ export default function Home() {
             className={`px-3 py-3 rounded-lg border ${isListening ? 'bg-red-100 border-red-400 text-red-600 animate-pulse' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-100'} flex items-center`}
             title="Sesle giriş"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v2m0 0h3m-3 0H9m6-6a3 3 0 11-6 0V7a3 3 0 016 0v5z" />
-            </svg>
+            {/* ...mic svg... */}
           </button>
           <button
             onClick={handleSearch}
@@ -329,19 +348,6 @@ export default function Home() {
       }
     </div>
   </div>
-
- 
-  
-  {/* Oda Boyutu */}
-  <div className="p-4 bg-gray-50 rounded-lg">
-    <h3 className="font-medium text-gray-700 mb-2">Oda Boyutu</h3>
-    <div className="flex flex-wrap gap-2">
-      {data.extractedFeatures.roomSize
-        ? <span className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-sm">{data.extractedFeatures.roomSize}</span>
-        : <span className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-sm">Belirtilmemiş</span>
-      }
-    </div>
-  </div>
   {/* Bütçe */}
   <div className="p-4 bg-gray-50 rounded-lg">
     <h3 className="font-medium text-gray-700 mb-2">Bütçe</h3>
@@ -352,7 +358,6 @@ export default function Home() {
       }
     </div>
   </div>
-  
   {/* Malzeme */}
   <div className="p-4 bg-gray-50 rounded-lg">
     <h3 className="font-medium text-gray-700 mb-2">Malzeme</h3>
@@ -397,6 +402,32 @@ export default function Home() {
                             {tag.name}
                           </span>
                         ))}
+                      </div>
+                      {/* Ebatlar ve diğer özellikler */}
+                      <div className="mb-2 text-sm text-gray-700">
+                        {product.width && product.depth && product.height && (
+                          <div>Ebatlar: {product.width} x {product.depth} x {product.height} cm</div>
+                        )}
+                        {product.doorCount && (
+                          <div>Kapak Sayısı: {product.doorCount}</div>
+                        )}
+                        {product.capacity && (
+                          <div>Kapasite: {product.capacity}</div>
+                        )}
+                        {product.material && (
+                          <div>Malzeme: {product.material}</div>
+                        )}
+                        {/* Extra Attributes */}
+                        {product.extraAttributes && Object.keys(product.extraAttributes).length > 0 && (
+                          <div className="mt-2">
+                            <div className="font-medium mb-1">Ekstra Özellikler:</div>
+                            <ul className="list-disc list-inside">
+                              {Object.entries(product.extraAttributes).map(([key, value]) => (
+                                <li key={key}><span className="font-semibold">{key}:</span> {String(value)}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-lg font-bold text-blue-600">

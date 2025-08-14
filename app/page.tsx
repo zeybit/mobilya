@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 
 interface Product {
@@ -108,40 +108,64 @@ export default function Home() {
   const [data, setData] = useState<RecommendationResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Web Speech API için state'ler
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(true);
   const recognitionRef = useRef<any>(null);
 
-  // Sesle giriş fonksiyonu
+  // Web Speech API desteğini kontrol et
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        setSpeechSupported(false);
+      }
+    }
+  }, []);
+
+  // Speech recognition (tek seferlik)
   const handleMicClick = () => {
     if (typeof window === 'undefined') return;
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       setSpeechSupported(false);
+      alert(
+        "Tarayıcınızda sesli arama desteklenmiyor.\n\n" +
+        "Lütfen Google Chrome veya Chromium tabanlı bir tarayıcı kullanın.\n" +
+        "Alternatif olarak, metin kutusunu kullanarak arama yapabilirsiniz."
+      );
       return;
     }
+
     if (!recognitionRef.current) {
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.lang = 'tr-TR';
       recognitionRef.current.interimResults = false;
       recognitionRef.current.maxAlternatives = 1;
     }
+
     const recognition = recognitionRef.current;
+    
     if (isListening) {
       recognition.stop();
       setIsListening(false);
       return;
     }
+
     setIsListening(true);
     recognition.start();
+
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
       setQuery(transcript);
       setIsListening(false);
     };
+
     recognition.onerror = () => {
       setIsListening(false);
     };
+
     recognition.onend = () => {
       setIsListening(false);
     };
@@ -149,11 +173,11 @@ export default function Home() {
 
   const handleSearch = async () => {
     if (!query.trim()) return;
-  
+
     setData(null);
     setLoading(true);
     setError(null);
-  
+
     try {
       const params = new URLSearchParams({ query });
       const response = await axios.get(
@@ -166,7 +190,7 @@ export default function Home() {
           }
         }
       );
-  
+
       if (response.data && response.data.recommendations && response.data.extractedFeatures) {
         setData(response.data);
       } else if (response.data && response.data.message) {
@@ -178,7 +202,7 @@ export default function Home() {
       }
     } catch (error: any) {
       console.error('Error fetching recommendations:', error);
-  
+
       if (error.code === 'ECONNABORTED') {
         setError('İstek zaman aşımına uğradı. Lütfen tekrar deneyin.');
       } else if (error.response) {
@@ -194,7 +218,6 @@ export default function Home() {
       setLoading(false);
     }
   };
-  
 
   return (
     <main className="min-h-screen p-8 bg-gray-50">
@@ -202,6 +225,7 @@ export default function Home() {
         <h1 className="text-4xl font-bold text-center mb-8 text-gray-800">
           Mobilya Önerileri
         </h1>
+        
         {/* Arama kutusu açıklaması */}
         <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg text-gray-700">
           <p className="mb-2 font-medium">Aradığınız ürünü ve isteğe bağlı olarak oda boyutunu girin.</p>
@@ -216,6 +240,7 @@ export default function Home() {
             (Örn: oda boyutu: 300x400x250)
           </p>
         </div>
+
         <div className="flex gap-4 mb-8 flex-wrap">
           <input
             type="text"
@@ -224,14 +249,21 @@ export default function Home() {
             placeholder="Örn: Beyaz koltuk oda boyutu: 300x400x250"
             className="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+          
+          {/* Sesli arama butonu */}
           <button
             type="button"
             onClick={handleMicClick}
-            className={`px-3 py-3 rounded-lg border ${isListening ? 'bg-red-100 border-red-400 text-red-600 animate-pulse' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-100'} flex items-center`}
-            title="Sesle giriş"
+            className={`px-3 py-3 rounded-lg border ${
+              isListening 
+                ? 'bg-red-100 border-red-400 text-red-600 animate-pulse' 
+                : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-100'
+            } flex items-center`}
+            title="Sesli arama"
           >
-            {/* ...mic svg... */}
+            {isListening ? 'Durdur' : 'Sesle Ara'}
           </button>
+
           <button
             onClick={handleSearch}
             disabled={loading}
@@ -241,8 +273,15 @@ export default function Home() {
           </button>
         </div>
 
+        {/* Tarayıcı desteği uyarısı */}
         {!speechSupported && (
-          <div className="text-center text-red-500 mb-4">Tarayıcınızda sesli giriş desteklenmiyor.</div>
+          <div className="text-center text-red-500 mb-4">
+            Tarayıcınızda sesli giriş desteklenmiyor.<br />
+            <span className="text-sm">
+              Lütfen <b>Google Chrome</b> veya Chromium tabanlı bir tarayıcı kullanın.<br />
+              Alternatif olarak, metin kutusunu kullanarak arama yapabilirsiniz.
+            </span>
+          </div>
         )}
 
         {loading && (
@@ -278,103 +317,58 @@ export default function Home() {
 
             {/* Çıkarılan Özellikler */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-  {/* Renkler */}
-  <div className="p-4 bg-gray-50 rounded-lg">
-    <h3 className="font-medium text-gray-700 mb-2">Renkler</h3>
-    <div className="flex flex-wrap gap-2">
-      {data.extractedFeatures.colors && data.extractedFeatures.colors.length > 0
-        ? data.extractedFeatures.colors.map((color, index) => (
-            <span key={index} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-              {color}
-            </span>
-          ))
-        : <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">Belirtilmemiş</span>
-      }
-    </div>
-  </div>
-  {/* Stiller */}
-  <div className="p-4 bg-gray-50 rounded-lg">
-    <h3 className="font-medium text-gray-700 mb-2">Stiller</h3>
-    <div className="flex flex-wrap gap-2">
-      {data.extractedFeatures.styles && data.extractedFeatures.styles.length > 0
-        ? data.extractedFeatures.styles.map((style, index) => (
-            <span key={index} className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-              {style}
-            </span>
-          ))
-        : <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">Belirtilmemiş</span>
-      }
-    </div>
-  </div>
-  {/* Odalar */}
-  <div className="p-4 bg-gray-50 rounded-lg">
-    <h3 className="font-medium text-gray-700 mb-2">Odalar</h3>
-    <div className="flex flex-wrap gap-2">
-      {data.extractedFeatures.rooms && data.extractedFeatures.rooms.length > 0
-        ? data.extractedFeatures.rooms.map((room, index) => (
-            <span key={index} className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
-              {room}
-            </span>
-          ))
-        : <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">Belirtilmemiş</span>
-      }
-    </div>
-  </div>
-  {/* Ürün Tipleri */}
-  <div className="p-4 bg-gray-50 rounded-lg">
-    <h3 className="font-medium text-gray-700 mb-2">Ürün Tipleri</h3>
-    <div className="flex flex-wrap gap-2">
-      {data.extractedFeatures.productTypes && data.extractedFeatures.productTypes.length > 0
-        ? data.extractedFeatures.productTypes.map((type, index) => (
-            <span key={index} className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm">
-              {type}
-            </span>
-          ))
-        : <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm">Belirtilmemiş</span>
-      }
-    </div>
-  </div>
-  {/* Oda Rengi */}
-  <div className="p-4 bg-gray-50 rounded-lg">
-    <h3 className="font-medium text-gray-700 mb-2">Oda Rengi</h3>
-    <div className="flex flex-wrap gap-2">
-      {data.extractedFeatures.roomColors && data.extractedFeatures.roomColors.length > 0
-        ? data.extractedFeatures.roomColors.map((color, index) => (
-            <span key={index} className="px-3 py-1 bg-pink-100 text-pink-800 rounded-full text-sm">
-              {color}
-            </span>
-          ))
-        : <span className="px-3 py-1 bg-pink-100 text-pink-800 rounded-full text-sm">Belirtilmemiş</span>
-      }
-    </div>
-  </div>
-  {/* Bütçe */}
-  <div className="p-4 bg-gray-50 rounded-lg">
-    <h3 className="font-medium text-gray-700 mb-2">Bütçe</h3>
-    <div className="flex flex-wrap gap-2">
-      {data.extractedFeatures.budget
-        ? <span className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm">{data.extractedFeatures.budget}</span>
-        : <span className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm">Belirtilmemiş</span>
-      }
-    </div>
-  </div>
-  {/* Malzeme */}
-  <div className="p-4 bg-gray-50 rounded-lg">
-    <h3 className="font-medium text-gray-700 mb-2">Malzeme</h3>
-    <div className="flex flex-wrap gap-2">
-      {data.extractedFeatures.material
-        ? <span className="px-3 py-1 bg-yellow-200 text-yellow-900 rounded-full text-sm">{data.extractedFeatures.material}</span>
-        : <span className="px-3 py-1 bg-yellow-200 text-yellow-900 rounded-full text-sm">Belirtilmemiş</span>
-      }
-    </div>
-  </div>
-  
+              {data.extractedFeatures.colors.length > 0 && (
+                <div className="bg-white p-4 rounded-lg shadow">
+                  <h3 className="font-semibold mb-2">Renkler</h3>
+                  <div className="flex flex-wrap gap-1">
+                    {data.extractedFeatures.colors.map((color, index) => (
+                      <span key={index} className="px-2 py-1 bg-gray-100 rounded text-sm">
+                        {color}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-  
-  
-</div>
-            
-           
+              {data.extractedFeatures.styles.length > 0 && (
+                <div className="bg-white p-4 rounded-lg shadow">
+                  <h3 className="font-semibold mb-2">Stiller</h3>
+                  <div className="flex flex-wrap gap-1">
+                    {data.extractedFeatures.styles.map((style, index) => (
+                      <span key={index} className="px-2 py-1 bg-gray-100 rounded text-sm">
+                        {style}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {data.extractedFeatures.rooms.length > 0 && (
+                <div className="bg-white p-4 rounded-lg shadow">
+                  <h3 className="font-semibold mb-2">Odalar</h3>
+                  <div className="flex flex-wrap gap-1">
+                    {data.extractedFeatures.rooms.map((room, index) => (
+                      <span key={index} className="px-2 py-1 bg-gray-100 rounded text-sm">
+                        {room}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {data.extractedFeatures.productTypes.length > 0 && (
+                <div className="bg-white p-4 rounded-lg shadow">
+                  <h3 className="font-semibold mb-2">Ürün Tipleri</h3>
+                  <div className="flex flex-wrap gap-1">
+                    {data.extractedFeatures.productTypes.map((type, index) => (
+                      <span key={index} className="px-2 py-1 bg-gray-100 rounded text-sm">
+                        {type}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Ürün Önerileri */}
             <div>
@@ -394,14 +388,29 @@ export default function Home() {
                       <h3 className="text-xl font-semibold mb-2">{product.name}</h3>
                       <p className="text-gray-600 mb-2">{product.description}</p>
                       <div className="flex flex-wrap gap-2 mb-3">
-                        <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                          {product.category.name}
-                        </span>
-                        {product.tags.map((tag) => (
-                          <span key={tag._id} className="px-2 py-1 bg-gray-100 text-gray-800 rounded-full text-sm">
-                            {tag.name}
+                        {/* Güvenli category erişimi */}
+                        {product.category && typeof product.category === 'object' && product.category.name ? (
+                          <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                            {product.category.name}
                           </span>
-                        ))}
+                        ) : (
+                          <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-sm">
+                            Kategori Yok
+                          </span>
+                        )}
+                        
+                        {/* Güvenli tags erişimi */}
+                        {product.tags && Array.isArray(product.tags) && product.tags.length > 0 ? (
+                          product.tags.map((tag) => (
+                            <span key={tag._id} className="px-2 py-1 bg-gray-100 text-gray-800 rounded-full text-sm">
+                              {tag.name}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="px-2 py-1 bg-gray-100 text-gray-500 rounded-full text-sm">
+                            Etiket Yok
+                          </span>
+                        )}
                       </div>
                       {/* Ebatlar ve diğer özellikler */}
                       <div className="mb-2 text-sm text-gray-700">

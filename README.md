@@ -1,4 +1,3 @@
-
 # Mobilya Öneri Sistemi
 
 Yapay zeka destekli mobilya öneri sistemi. Kullanıcıların doğal dilde yaptığı aramalar için uygun mobilya önerilerini sunar.
@@ -19,10 +18,10 @@ Yapay zeka destekli mobilya öneri sistemi. Kullanıcıların doğal dilde yapt�
 - Node.js & Express.js
 - MongoDB & Mongoose
 - Google Generative AI (Gemini)
-- Python (ML işlemleri için)
+- Natural Language Processing
+- RESTful API
 
 ### Frontend
-- React.js
 - HTML/CSS/JavaScript
 - Web Speech API
 
@@ -30,11 +29,10 @@ Yapay zeka destekli mobilya öneri sistemi. Kullanıcıların doğal dilde yapt�
 
 ### Gereksinimler
 - Node.js (v16 veya üzeri)
-- Python (v3.8 veya üzeri)
 - MongoDB (v5.0 veya üzeri)
 - Google AI API anahtarı
 
-### Backend Kurulumu
+### Kurulum Adımları
 
 1. **Repository'yi klonlayın:**
 ```bash
@@ -47,47 +45,31 @@ cd mobilya
 npm install
 ```
 
-3. **Python sanal ortamı oluşturun:**
-```bash
-python -m venv venv
-# Windows için
-venv\Scripts\activate
-# macOS/Linux için
-source venv/bin/activate
-```
-
-4. **Python bağımlılıklarını yükleyin:**
-```bash
-pip install -r requirements.txt
-```
-
-5. **Ortam değişkenlerini ayarlayın:**
+3. **Ortam değişkenlerini ayarlayın:**
 ```bash
 # .env dosyası oluşturun ve aşağıdaki değişkenleri ekleyin
 ```
 
 `.env` dosyası içeriği:
 ```env
-PORT=3000
+PORT=5000
 MONGODB_URI=mongodb://localhost:27017/mobilya
-JWT_SECRET=your_jwt_secret_here
 GOOGLE_AI_API_KEY=your_google_ai_api_key_here
 NODE_ENV=development
 ```
 
-6. **MongoDB'yi başlatın:**
+4. **MongoDB'yi başlatın:**
 ```bash
 # MongoDB servisini başlatın
 mongod
 ```
 
-7. **Uygulamayı başlatın:**
+5. **Uygulamayı başlatın:**
 ```bash
-# Backend için (ana dizinde)
+# Production için
 npm start
 
-# Frontend için (eğer ayrı dizin varsa)
-cd frontend
+# Development için
 npm run dev
 ```
 
@@ -106,6 +88,10 @@ npm run dev
 ### Kategoriler
 - `GET /api/categories` - Tüm kategoriler
 - `POST /api/categories` - Yeni kategori ekle
+
+### Etiketler
+- `GET /api/tags` - Tüm etiketler
+- `POST /api/tags` - Yeni etiket ekle
 
 ## 🧠 AI Özellikleri
 
@@ -127,14 +113,26 @@ npm run dev
 ```
 mobilya/
 ├── controllers/          # API kontrolcüleri
+│   ├── categoryController.js
+│   ├── productController.js
+│   ├── recommendationController.js
+│   └── tagController.js
 ├── models/              # MongoDB şemaları
+│   ├── categoryModel.js
+│   ├── productModel.js
+│   └── tagModel.js
 ├── routes/              # API rotaları
+│   ├── categoryRoutes.js
+│   ├── productRoutes.js
+│   ├── recommendationRoutes.js
+│   └── tagRoutes.js
 ├── utils/               # Yardımcı fonksiyonlar
+│   └── db.js
 ├── public/              # Statik dosyalar
-├── venv/               # Python sanal ortamı (git'te yok)
+│   └── js/
+│       └── realtimeSpeechToText.js
 ├── app.js              # Express uygulaması
-├── server.js           # Sunucu
-├── requirements.txt    # Python bağımlılıkları
+├── server.js           # Sunucu başlatma
 ├── package.json        # Node.js bağımlılıkları
 └── .env               # Ortam değişkenleri (git'te yok)
 ```
@@ -154,8 +152,23 @@ git push heroku backend:main
 ```bash
 # Docker build
 docker build -t mobilya-app .
-docker run -p 3000:3000 mobilya-app
+docker run -p 5000:5000 mobilya-app
 ```
+
+## 📊 Kullanılan NPM Paketleri
+
+### Ana Bağımlılıklar
+- `express`: Web framework
+- `mongoose`: MongoDB ORM
+- `@google/generative-ai`: Google AI entegrasyonu
+- `cors`: Cross-Origin Resource Sharing
+- `dotenv`: Ortam değişkenleri yönetimi
+- `natural`: Doğal dil işleme
+- `multer`: Dosya upload
+- `axios`: HTTP client
+
+### Development Bağımlılıkları
+- `nodemon`: Development server auto-restart
 
 ## 🤝 Katkıda Bulunma
 
@@ -176,6 +189,28 @@ Proje: [https://github.com/zeybit/mobilya](https://github.com/zeybit/mobilya)
 ## ⚠️ Önemli Notlar
 
 - `.env` dosyasını GitHub'a pushlamamaya dikkat edin
-- `venv/` klasörü otomatik olarak git'ten hariç tutulur
-- Python ML kütüphaneleri büyük olduğu için local kurulum gereklidir
+- `node_modules/` klasörü otomatik olarak git'ten hariç tutulur
 - Google AI API anahtarınızı güvenli tutun
+- MongoDB bağlantı stringinizi production'da güvenli saklayın
+
+## 🔧 Troubleshooting
+
+### MongoDB Bağlantı Sorunu
+```bash
+# MongoDB servisinin çalıştığından emin olun
+sudo systemctl status mongod
+# veya Windows için
+net start MongoDB
+```
+
+### Port Çakışması
+```bash
+# Farklı port kullanmak için .env dosyasında PORT değişkenini güncelleyin
+PORT=3001
+```
+
+### API Anahtar Hatası
+```bash
+# .env dosyasında GOOGLE_AI_API_KEY değişkeninin doğru olduğundan emin olun
+# Google AI Studio'dan yeni anahtar alabilirsiniz
+```

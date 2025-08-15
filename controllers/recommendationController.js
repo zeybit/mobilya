@@ -46,7 +46,28 @@ const keywordMappings = {
         raf: 'raf', shelf: 'raf',
         komodin: 'komodin', nightstand: 'komodin',
         puf: 'puf', pouf: 'puf', ottoman: 'puf',
-        'televizyon ünitesi': 'televizyon ünitesi', 'tv unit': 'televizyon ünitesi', 'tv stand': 'televizyon ünitesi'
+        'televizyon ünitesi': 'televizyon ünitesi', 'tv unit': 'televizyon ünitesi', 'tv stand': 'televizyon ünitesi',
+        'tv ünitesi': 'televizyon ünitesi', 'tv': 'televizyon ünitesi', 'televizyon': 'televizyon ünitesi'
+    },
+    genel: {
+        // Bu kelimeler çok genel olduğu için ürün tipi olarak kullanılmamalı
+        furniture: '', mobilya: '', ürün: '', product: ''
+    },
+    malzeme: {
+        // Malzeme türleri - hem Türkçe hem İngilizce
+        mdf: 'mdf', 'mdf lake': 'mdf',
+        cam: 'cam', glass: 'cam',
+        ahşap: 'ahşap', wood: 'ahşap', wooden: 'ahşap',
+        kadife: 'kadife', velvet: 'kadife',
+        metal: 'metal', metalik: 'metal',
+        deri: 'deri', leather: 'deri',
+        kumaş: 'kumaş', fabric: 'kumaş', textile: 'kumaş',
+        plastik: 'plastik', plastic: 'plastik',
+        mermer: 'mermer', marble: 'mermer',
+        granit: 'granit', granite: 'granit',
+        seramik: 'seramik', ceramic: 'seramik',
+        laminat: 'laminat', laminate: 'laminat',
+        lake: 'lake', 'lake boya': 'lake'
     }
 };
 
@@ -93,10 +114,37 @@ exports.getProductRecommendations = async (req, res) => {
 
         console.log('Gelen sorgu:', userInput); // Debug log
 
-        const extractedFeatures = await extractFeaturesWithAI(userInput);
-        console.log('Çıkarılan özellikler:', extractedFeatures); // Debug log
-//sadece stokta olan ürünleri getir
-        const products = await Product.find({ stock: { $gt: 0 } }).populate('category').populate('tags');
+        let extractedFeatures;
+        try {
+            extractedFeatures = await extractFeaturesWithAI(userInput);
+            console.log('Çıkarılan özellikler (AI):', extractedFeatures); // Debug log
+        } catch (aiError) {
+            console.log('AI hatası, fallback kullanılıyor:', aiError.message);
+            // AI çalışmadığında direkt keyword mapping kullan
+            const input = userInput.toLowerCase();
+            extractedFeatures = {
+                colors: Object.entries(keywordMappings.renk)
+                    .filter(([key]) => input.includes(key))
+                    .map(([_, value]) => value),
+                roomColors: [],
+                styles: Object.entries(keywordMappings.stil)
+                    .filter(([key]) => input.includes(key))
+                    .map(([_, value]) => value),
+                rooms: Object.entries(keywordMappings.oda)
+                    .filter(([key]) => input.includes(key))
+                    .map(([_, value]) => value),
+                productTypes: Object.entries(keywordMappings.ürün)
+                    .filter(([key, val]) => input.includes(key) && val !== '')
+                    .map(([_, val]) => val),
+                material: Object.entries(keywordMappings.malzeme)
+                    .filter(([key]) => input.includes(key))
+                    .map(([_, value]) => value),
+                colorCompatibility: []
+            };
+            console.log('Fallback özellikler:', extractedFeatures);
+        }
+        // Tüm ürünleri getir (stok kontrolü kaldırıldı)
+        const products = await Product.find({}).populate('category').populate('tags');
         console.log('Bulunan ürün sayısı:', products.length); // Debug log
 
         const scoredProducts = scoreProducts(products, extractedFeatures, userInput)
@@ -106,6 +154,8 @@ exports.getProductRecommendations = async (req, res) => {
             .map((p, i) => ({ ...p.product.toObject(), isRecommended: i === 0 }));
 
         console.log('Puanlanan ürün sayısı:', scoredProducts.length); // Debug log
+        
+
 
         // Eğer sonuç yoksa, özellikleri tekrar kontrol et
         if (scoredProducts.length === 0) {
@@ -230,14 +280,22 @@ Extract these features:
 - color: (product color, e.g. "beyaz", "white", "gri", "gray", "mavi", "blue")
 - room: (room type, e.g. "oturma odası", "living room", "çocuk odası", "kids room", "bahçe", "garden")
 - style: (style, e.g. "modern", "minimalist", "vintage", "industrial")
-- productType: (product type, e.g. "koltuk", "sofa", "couch", "masa", "table")
+- productType: (product type, e.g. "koltuk", "sofa", "couch", "masa", "table", "furniture" should be ignored as it's too generic)
 - roomColor: (the color of the room, e.g. "beyaz", "white", "gri", "gray")
 - roomSize: (the size of the room, e.g. "küçük", "small", "büyük", "large", "orta", "medium")
 - budget: (budget or price range, e.g. "5000 TL", "$1000", "orta", "düşük", "yüksek", "low", "medium", "high")
 - brand: (brand name if mentioned)
-- material: (material, e.g. "ahşap", "wood", "metal", "fabric", "deri", "leather")
+- material: (material type, e.g. "ahşap", "wood", "metal", "fabric", "deri", "leather", "cam", "glass", "mdf", "plastik", "plastic", "kadife", "velvet", "mermer", "marble")
 - quantity: (number of products, e.g. "2", "iki", "two")
 - purpose: (intended use, e.g. "çalışmak için", "for working", "misafirler için", "for guests")
+- warranty: (warranty period, e.g. "1 yıl", "2 yıl", "3 yıl", "1 year", "2 years", "3 years")
+
+IMPORTANT RULES:
+1. If the input contains "furniture", "ürün", "mobilya" without specific product type, leave productType empty
+2. If the input contains "living room furniture", extract "living room" as room and leave productType empty
+3. If the input contains "oturma odası ürünü", extract "oturma odası" as room and leave productType empty
+4. If the input contains "modern furniture", extract "modern" as style and leave productType empty
+5. Only extract specific product types like "koltuk", "sofa", "couch", "masa", "table", "chair", etc.
 
 Return only a valid JSON like this:
 {
@@ -251,7 +309,8 @@ Return only a valid JSON like this:
   "brand": "",
   "material": "",
   "quantity": "",
-  "purpose": ""
+  "purpose": "",
+  "warranty": ""
 }
 
 If a feature is not present, leave it as an empty string.
@@ -282,7 +341,8 @@ Return only the JSON, no explanation.
         const roomColor = normalizeLLMValue(features.roomColor, keywordMappings.renk);
         const roomSize = features.roomSize?.toLowerCase().trim() || '';
         const budget = features.budget?.toLowerCase().trim() || '';
-        const material = features.material?.toLowerCase().trim() || '';
+        const material = normalizeLLMValue(features.material, keywordMappings.malzeme);
+        const warranty = features.warranty?.toLowerCase().trim() || '';
 
         // Oda boyutu (en x boy x yükseklik) gibi bir formatı yakala
         let roomDimensions = null;
@@ -305,7 +365,8 @@ Return only the JSON, no explanation.
             roomColors: roomColor ? [roomColor] : [],
             roomSize,
             budget,
-            material,
+            material: material ? [material] : [],
+            warranty,
             colorCompatibility: colorCompatibility[color] || [],
             roomDimensions
         };
@@ -327,8 +388,8 @@ Return only the JSON, no explanation.
             .filter(([key]) => input.includes(key))
             .map(([_, value]) => value);
         const productTypes = Object.entries(keywordMappings.ürün)
-            .filter(([key]) => input.includes(key))
-            .map(([_, value]) => value);
+            .filter(([key, val]) => input.includes(key) && val !== '') // Boş değerleri filtrele
+            .map(([_, val]) => val);
         // Basit fallback, diğer yeni alanlar boş döner
         return {
             colors,
@@ -339,13 +400,16 @@ Return only the JSON, no explanation.
             roomSize: '',
             budget: '',
             material: '',
+            warranty: '',
             colorCompatibility: colors.length ? (colorCompatibility[colors[0]] || []) : []
         };
     }
 }
 
 function normalizeText(text) {
-    if (!text) return '';
+    // Güvenli tip kontrolü
+    if (!text || typeof text !== 'string') return '';
+    
     return text.toLowerCase()
         .replace(/ı/g, 'i')
         .replace(/ğ/g, 'g')
@@ -364,9 +428,31 @@ function normalizeText(text) {
 
 function parseBudget(budgetStr) {
     if (!budgetStr) return null;
+    
     // "25 bin", "25k", "25.000 TL" gibi varyasyonları da destekle
     let str = budgetStr.toLowerCase().replace(/tl|₺|\$/g, '').trim();
-    str = str.replace(/,/g, '.');
+    
+    // Türkçe binlik ayırıcı (nokta) için özel işlem
+    // "25.000" -> "25000" (nokta binlik ayırıcı olarak kullanılmışsa)
+    if (str.includes('.')) {
+        // Nokta sayısını kontrol et - eğer birden fazla nokta varsa veya son noktadan sonra 3 rakam varsa binlik ayırıcıdır
+        const parts = str.split('.');
+        if (parts.length > 1) {
+            const lastPart = parts[parts.length - 1];
+            // Eğer son kısım 3 rakamdan oluşuyorsa (25.000 gibi) binlik ayırıcıdır
+            if (lastPart.length === 3 && /^\d{3}$/.test(lastPart)) {
+                // Binlik ayırıcı olarak kullanılan noktaları kaldır
+                str = str.replace(/\./g, '');
+            } else {
+                // Ondalık sayı olarak kabul et (25.5 gibi)
+                str = str.replace(/,/g, '.');
+            }
+        }
+    } else {
+        // Nokta yoksa virgülü noktaya çevir (İngilizce format)
+        str = str.replace(/,/g, '.');
+    }
+    
     // "bin" veya "k" varsa çarpan uygula
     if (str.includes('bin')) {
         str = str.replace(/[^0-9.]/g, '');
@@ -378,7 +464,8 @@ function parseBudget(budgetStr) {
         let num = parseFloat(str);
         if (!isNaN(num)) return num * 1000;
     }
-    // Sadece rakam ve nokta
+    
+    // Sadece rakam ve nokta (ondalık için)
     let clean = str.replace(/[^0-9.]/g, '');
     if (!clean) return null;
     let num = parseFloat(clean);
@@ -432,18 +519,43 @@ function scoreProducts(products, features, userInput = '') {
         const prodRoomSize = normalizeText(product.roomSize || '');
         const prodBudget = normalizeText(product.budget || '');
 
-        // Ürün rengi eşleşmesi
+        // Ürün rengi eşleşmesi - Gelişmiş optimizasyon
         if (features.colors.length) {
             totalCriteria++;
-            const colorMatch = features.colors.some(color => {
+            let colorMatch = false;
+            let exactColorMatch = false;
+            
+            for (const color of features.colors) {
                 const normalizedColor = normalizeText(color);
-                return prodColor === normalizedColor || 
-                       productName.includes(normalizedColor) ||
-                       productDesc.includes(normalizedColor);
-            });
-            if (colorMatch) { 
-                score += 30;
-                matchCount++; 
+                
+                // Ürün rengi ile tam eşleşme
+                if (prodColor === normalizedColor) {
+                    colorMatch = true;
+                    exactColorMatch = true;
+                    break;
+                }
+                
+                // Ürün adında renk geçiyor
+                if (productName.includes(normalizedColor)) {
+                    colorMatch = true;
+                    exactColorMatch = true;
+                    break;
+                }
+                
+                // Açıklamada renk geçiyor
+                if (productDesc.includes(normalizedColor)) {
+                    colorMatch = true;
+                    break;
+                }
+            }
+            
+            if (colorMatch) {
+                if (exactColorMatch) {
+                    score += 35; // Tam renk eşleşmesi için yüksek puan
+                } else {
+                    score += 20; // Açıklamada geçen renk için düşük puan
+                }
+                matchCount++;
             }
         }
 
@@ -464,62 +576,220 @@ function scoreProducts(products, features, userInput = '') {
             }
         }
 
-        // Kategori eşleşmesi
+        // Kategori eşleşmesi - Gelişmiş optimizasyon
         if (features.rooms.length) {
             totalCriteria++;
             const productCategoryId = product.category?._id?.toString();
+            const productCategoryName = normalizeText(product.category?.name || '');
+            
             const match = features.rooms.some(room => {
                 const normalizedRoom = normalizeText(room);
                 if (categoryMapping[normalizedRoom] === productCategoryId) {
                     return true;
                 }
-                const productCategoryName = normalizeText(product.category?.name || '');
                 return productCategoryName === normalizedRoom;
             });
+            
             if (match) { 
                 score += 20;
                 matchCount++; 
             }
         }
-
-        // Stil eşleşmesi
-        if (features.styles.length) {
-            totalCriteria++;
-            const styleMatch = product.tags?.some(tag =>
-                features.styles.some(style => 
-                    normalizeText(tag.name) === normalizeText(style)
-                )
-            ) || features.styles.some(style => 
-                productName.includes(normalizeText(style)) ||
-                productDesc.includes(normalizeText(style))
-            );
-            if (styleMatch) { score += 12; matchCount++; }
+        
+        // Ürün tipi ile kategori uyumluluğu bonus puanı
+        if (features.productTypes.length && product.category?.name) {
+            const productType = features.productTypes[0];
+            const categoryName = product.category.name.toLowerCase();
+            
+            // Ürün tipi ile kategori uyumluluğu kontrolü
+            const typeCategoryCompatibility = {
+                'koltuk': ['oturma odası', 'salon'],
+                'kanepe': ['oturma odası', 'salon'],
+                'sofa': ['oturma odası', 'salon'],
+                'couch': ['oturma odası', 'salon'],
+                'yatak': ['yatak odası'],
+                'bed': ['yatak odası'],
+                'komodin': ['yatak odası'],
+                'nightstand': ['yatak odası'],
+                'gardırop': ['yatak odası'],
+                'wardrobe': ['yatak odası'],
+                'masa': ['çalışma odası', 'yemek odası', 'mutfak'],
+                'table': ['çalışma odası', 'yemek odası', 'mutfak'],
+                'sandalye': ['çalışma odası', 'yemek odası', 'mutfak'],
+                'chair': ['çalışma odası', 'yemek odası', 'mutfak']
+            };
+            
+            const compatibleCategories = typeCategoryCompatibility[productType] || [];
+            if (compatibleCategories.some(cat => categoryName.includes(cat))) {
+                score += 5; // Uyumlu kategori bonus puanı
+            }
         }
 
-        // Ürün tipi eşleşmesi
+        // Stil eşleşmesi - Gelişmiş optimizasyon
+        if (features.styles.length) {
+            totalCriteria++;
+            let styleMatch = false;
+            let exactStyleMatch = false;
+            
+            for (const style of features.styles) {
+                const normalizedStyle = normalizeText(style);
+                
+                // Tag'larda tam eşleşme
+                if (product.tags?.some(tag => normalizeText(tag.name) === normalizedStyle)) {
+                    styleMatch = true;
+                    exactStyleMatch = true;
+                    break;
+                }
+                
+                // Ürün adında tam eşleşme
+                if (productName.includes(normalizedStyle)) {
+                    styleMatch = true;
+                    exactStyleMatch = true;
+                    break;
+                }
+                
+                // Açıklamada eşleşme
+                if (productDesc.includes(normalizedStyle)) {
+                    styleMatch = true;
+                    break;
+                }
+            }
+            
+            if (styleMatch) {
+                if (exactStyleMatch) {
+                    score += 15; // Tam stil eşleşmesi için yüksek puan
+                } else {
+                    score += 8; // Açıklamada geçen stil için düşük puan
+                }
+                matchCount++;
+            }
+        }
+
+        // Malzeme eşleşmesi - Yeni eklenen
+        if (features.material && features.material.length > 0) {
+            totalCriteria++;
+            let materialMatch = false;
+            let exactMaterialMatch = false;
+            
+            for (const material of features.material) {
+                const normalizedMaterial = normalizeText(material);
+                
+                // materialType alanında tam eşleşme
+                if (product.materialType && normalizeText(product.materialType) === normalizedMaterial) {
+                    materialMatch = true;
+                    exactMaterialMatch = true;
+                    break;
+                }
+                
+                // Ürün adında malzeme geçiyor
+                if (productName.includes(normalizedMaterial)) {
+                    materialMatch = true;
+                    exactMaterialMatch = true;
+                    break;
+                }
+                
+                // Açıklamada malzeme geçiyor
+                if (productDesc.includes(normalizedMaterial)) {
+                    materialMatch = true;
+                    break;
+                }
+                
+                // Extra attributes'ta malzeme geçiyor
+                if (product.extraAttributes && product.extraAttributes.materialType) {
+                    const extraMaterial = normalizeText(product.extraAttributes.materialType);
+                    if (extraMaterial === normalizedMaterial) {
+                        materialMatch = true;
+                        exactMaterialMatch = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (materialMatch) {
+                if (exactMaterialMatch) {
+                    score += 25; // Tam malzeme eşleşmesi için yüksek puan
+                } else {
+                    score += 15; // Açıklamada geçen malzeme için düşük puan
+                }
+                matchCount++;
+            }
+        }
+
+        // Ürün tipi eşleşmesi - Gelişmiş optimizasyon
         if (features.productTypes.length) {
             totalCriteria++;
-            const typeMatch = features.productTypes.some(type => {
+            let typeMatch = false;
+            let exactProductTypeMatch = false;
+            
+            for (const type of features.productTypes) {
                 const normalizedType = normalizeText(type);
-                if (type.includes(' ')) {
-                    return productName.includes(normalizedType) || 
-                           productDesc.includes(normalizedType);
+                
+                // Tam ürün tipi eşleşmesi (ürün adında tam olarak geçiyor)
+                if (productName.toLowerCase().includes(normalizedType)) {
+                    typeMatch = true;
+                    exactProductTypeMatch = true;
+                    break;
                 }
-                const words = productName.split(' ');
-                return words.some(word => normalizeText(word) === normalizedType) || 
-                       productName.includes(normalizedType) ||
-                       productDesc.includes(normalizedType);
-            });
-            if (typeMatch) { score += 15; matchCount++; }
+                
+                // Ürün adında kelime bazında eşleşme
+                const productWords = productName.toLowerCase().split(' ');
+                if (productWords.includes(normalizedType)) {
+                    typeMatch = true;
+                    exactProductTypeMatch = true;
+                    break;
+                }
+                
+                // Açıklamada eşleşme (daha düşük öncelik)
+                if (productDesc.toLowerCase().includes(normalizedType)) {
+                    typeMatch = true;
+                    break;
+                }
+            }
+            
+            if (typeMatch) {
+                if (exactProductTypeMatch) {
+                    score += 25; // Tam ürün tipi eşleşmesi için yüksek puan
+                } else {
+                    score += 10; // Açıklamada geçen ürün tipi için düşük puan
+                }
+                matchCount++;
+            }
+            
+
         }
 
         // Oda boyutu eşleşmesi
         if (features.roomSize) {
             totalCriteria++;
-            const sizeMatch = prodRoomSize === normalizeText(features.roomSize) ||
-                productName.includes(normalizeText(features.roomSize)) ||
-                productDesc.includes(normalizeText(features.roomSize));
-            if (sizeMatch) { score += 8; matchCount++; }
+            const normalizedRoomSize = normalizeText(features.roomSize);
+            const productRoomSize = normalizeText(product.roomSize || '');
+            const extraRoomSize = normalizeText(product.extraAttributes?.roomSize || '');
+            
+            // Büyük oda için küçük/orta ürünleri ele
+            if (normalizedRoomSize === 'büyük') {
+                const productSize = extraRoomSize || productRoomSize;
+                if (productSize === 'küçük' || productSize === 'orta') {
+                    return { product, score: 0 }; // Bu ürünü ele
+                }
+            }
+            
+            // Küçük oda için büyük ürünleri ele
+            if (normalizedRoomSize === 'küçük') {
+                const productSize = extraRoomSize || productRoomSize;
+                if (productSize === 'büyük') {
+                    return { product, score: 0 }; // Bu ürünü ele
+                }
+            }
+            
+            const sizeMatch = prodRoomSize === normalizedRoomSize ||
+                extraRoomSize === normalizedRoomSize ||
+                productName.includes(normalizedRoomSize) ||
+                productDesc.includes(normalizedRoomSize);
+                
+            if (sizeMatch) { 
+                score += 15; // Oda boyutu eşleşmesi için daha yüksek puan
+                matchCount++; 
+            }
         }
 
         // Bütçe eşleşmesi
@@ -538,12 +808,61 @@ function scoreProducts(products, features, userInput = '') {
         }
 
         // Malzeme eşleşmesi
-        if (features.material) {
+        if (features.material && Array.isArray(features.material) && features.material.length > 0) {
             totalCriteria++;
-            const materialMatch = prodMaterial === normalizeText(features.material) ||
-                productName.includes(normalizeText(features.material)) ||
-                productDesc.includes(normalizeText(features.material));
-            if (materialMatch) { score += 8; matchCount++; }
+            let materialMatch = false;
+            
+            for (const material of features.material) {
+                if (material && typeof material === 'string') {
+                    const normalizedMaterial = normalizeText(material);
+                    if (prodMaterial === normalizedMaterial ||
+                        productName.includes(normalizedMaterial) ||
+                        productDesc.includes(normalizedMaterial)) {
+                        materialMatch = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (materialMatch) { 
+                score += 8; 
+                matchCount++; 
+            }
+        }
+
+        // Garanti süresi eşleşmesi
+        if (features.warranty || (userInput && (userInput.includes('garanti') || userInput.includes('warranty')))) {
+            totalCriteria++;
+            let requestedGaranti = '';
+            
+            // AI'dan gelen warranty bilgisini kontrol et
+            if (features.warranty) {
+                const warrantyMatch = features.warranty.match(/(\d+)\s*yıl/);
+                if (warrantyMatch) {
+                    requestedGaranti = warrantyMatch[1];
+                }
+            }
+            
+            // Eğer AI'dan gelmediyse userInput'tan çıkar
+            if (!requestedGaranti) {
+                const garantiMatch = userInput.match(/(\d+)\s*yıl/);
+                if (garantiMatch) {
+                    requestedGaranti = garantiMatch[1];
+                }
+            }
+            
+            if (requestedGaranti) {
+                const productGaranti = product.extraAttributes?.garantiSuresi || '';
+                const productGarantiMatch = productGaranti.match(/(\d+)\s*yıl/);
+                
+                if (productGarantiMatch && productGarantiMatch[1] === requestedGaranti) {
+                    score += 20; // Garanti süresi eşleşmesi için yüksek puan
+                    matchCount++;
+                } else if (productGarantiMatch) {
+                    // Garanti süresi eşleşmiyorsa ürünü ele
+                    return { product, score: 0 };
+                }
+            }
         }
 
         // Arama sorgusundaki kelimeler ürün adı/açıklamasında geçiyorsa ekstra puan
@@ -592,7 +911,7 @@ function scoreProducts(products, features, userInput = '') {
             }
         }
 
-        // Ürün tipi zorunlu kontrolü
+        // Ürün tipi kontrolü (zorunlu değil, sadece varsa kontrol et)
         if (features.productTypes.length) {
             const typeMatch = features.productTypes.some(type => {
                 const normalizedType = normalizeText(type);
@@ -605,9 +924,11 @@ function scoreProducts(products, features, userInput = '') {
                        productName.includes(normalizedType) ||
                        productDesc.includes(normalizedType);
             });
-            if (!typeMatch) {
-                return { product, score: 0 }; // Ürün tipi eşleşmiyorsa, skor 0
+            if (typeMatch) {
+                score += 15; // Ürün tipi eşleşmesi için puan
+                matchCount++;
             }
+            // Ürün tipi eşleşmiyorsa skor 0 yapmıyoruz, diğer kriterlere göre değerlendiriyoruz
         }
 
         // Bütçe kontrolü: Eğer bütçe varsa ve ürün fiyatı bütçeden yüksekse, ürünü eliyoruz

@@ -7,6 +7,7 @@ const connectDB = require('./utils/db');
 const categoryRoutes = require('./routes/categoryRoutes');
 const productRoutes = require('./routes/productRoutes');
 const tagRoutes = require('./routes/tagRoutes');
+const speechToTextRoutes = require('./routes/speechToTextRoutes');
 
 // Initialize express app
 const app = express();
@@ -23,6 +24,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/categories', categoryRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/tags', tagRoutes);
+
 
 // Error handling middleware
 app.use((err, req, res, next) => {

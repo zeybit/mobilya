@@ -186,12 +186,6 @@ MIT License - Detaylar için [LICENSE](LICENSE) dosyasına bakın.
 
 Proje: [https://github.com/zeybit/mobilya](https://github.com/zeybit/mobilya)
 
-## ⚠️ Önemli Notlar
-
-- `.env` dosyasını GitHub'a pushlamamaya dikkat edin
-- `node_modules/` klasörü otomatik olarak git'ten hariç tutulur
-- Google AI API anahtarınızı güvenli tutun
-- MongoDB bağlantı stringinizi production'da güvenli saklayın
 
 ## 🔧 Troubleshooting
 

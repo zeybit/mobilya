@@ -5,7 +5,7 @@ Yapay zeka destekli mobilya öneri sistemi. Kullanıcıların doğal dilde yapt�
 ## 🚀 Özellikler
 
 - **Yapay Zeka Destekli Arama**: Google Gemini AI ile doğal dil işleme
-- **Sesli Arama**: Web Speech API ile sesli komut desteği
+- **Sesli Arama**: Web Speech API ile gerçek zamanlı sesli komut desteği
 - **Akıllı Filtreleme**: Renk, stil, oda tipi, malzeme, bütçe bazlı filtreleme
 - **Oda Boyutu Uyumluluğu**: Ürün boyutlarını oda ölçüleri ile karşılaştırma
 - **Renk Uyumluluğu**: Oda rengi ile ürün rengi uyumluluğu kontrolü
@@ -36,7 +36,7 @@ Yapay zeka destekli mobilya öneri sistemi. Kullanıcıların doğal dilde yapt�
 
 1. **Repository'yi klonlayın:**
 ```bash
-git clone https://github.com/zeybit/mobilya.git
+git clone https://github.com/yourusername/mobilya.git
 cd mobilya
 ```
 
@@ -46,11 +46,8 @@ npm install
 ```
 
 3. **Ortam değişkenlerini ayarlayın:**
-```bash
-# .env dosyası oluşturun ve aşağıdaki değişkenleri ekleyin
-```
+`.env` dosyasını oluşturun (.env.example dosyasını referans alabilirsiniz)
 
-`.env` dosyası içeriği:
 ```env
 PORT=5000
 MONGODB_URI=mongodb://localhost:27017/mobilya
@@ -58,13 +55,7 @@ GOOGLE_AI_API_KEY=your_google_ai_api_key_here
 NODE_ENV=development
 ```
 
-4. **MongoDB'yi başlatın:**
-```bash
-# MongoDB servisini başlatın
-mongod
-```
-
-5. **Uygulamayı başlatın:**
+4. **Uygulamayı başlatın:**
 ```bash
 # Production için
 npm start
@@ -73,11 +64,13 @@ npm start
 npm run dev
 ```
 
-## 🎯 API Endpoints
+## 📊 API Endpoints
 
 ### Ürünler
 - `GET /api/products` - Tüm ürünleri listele
 - `GET /api/products/:id` - Belirli ürünü getir
+- `GET /api/products/category/:categoryId` - Kategoriye göre ürünleri getir
+- `GET /api/products/tag/:tagId` - Etikete göre ürünleri getir
 - `POST /api/products` - Yeni ürün ekle
 - `PUT /api/products/:id` - Ürün güncelle
 - `DELETE /api/products/:id` - Ürün sil
@@ -87,11 +80,17 @@ npm run dev
 
 ### Kategoriler
 - `GET /api/categories` - Tüm kategoriler
+- `GET /api/categories/:id` - Belirli kategoriyi getir
 - `POST /api/categories` - Yeni kategori ekle
+- `PUT /api/categories/:id` - Kategori güncelle
+- `DELETE /api/categories/:id` - Kategori sil
 
 ### Etiketler
 - `GET /api/tags` - Tüm etiketler
+- `GET /api/tags/:id` - Belirli etiketi getir
 - `POST /api/tags` - Yeni etiket ekle
+- `PUT /api/tags/:id` - Etiket güncelle
+- `DELETE /api/tags/:id` - Etiket sil
 
 ## 🧠 AI Özellikleri
 
@@ -99,13 +98,21 @@ npm run dev
 - Türkçe ve İngilizce sorguları anlama
 - Renk, stil, malzeme çıkarımı
 - Bütçe ve boyut analizi
+- Oda tipi ve boyutu tespiti
+
+### Sesli Arama
+- Gerçek zamanlı ses tanıma
+- Konuşma metni dönüşümü
+- Boyut formatlarını otomatik düzenleme
+- Hem Türkçe hem İngilizce dil desteği
 
 ### Arama Örnekleri
 ```
 "beyaz modern koltuk"
-"3+3+1 koltuk takımı oda: 400x300"
+"3x4 metrelik oda için masa"
 "ahşap çalışma masası"
-"5000 TL altında yatak odası"
+"5000 TL altında yatak odası mobilyası"
+"oda boyutu: 4x5 metre için kanepe"
 ```
 
 ## 📁 Proje Yapısı
@@ -117,42 +124,25 @@ mobilya/
 │   ├── productController.js
 │   ├── recommendationController.js
 │   └── tagController.js
-├── models/              # MongoDB şemaları
+├── models/               # MongoDB şemaları
 │   ├── categoryModel.js
 │   ├── productModel.js
 │   └── tagModel.js
-├── routes/              # API rotaları
+├── routes/               # API rotaları
 │   ├── categoryRoutes.js
 │   ├── productRoutes.js
 │   ├── recommendationRoutes.js
 │   └── tagRoutes.js
-├── utils/               # Yardımcı fonksiyonlar
+├── utils/                # Yardımcı fonksiyonlar
 │   └── db.js
-├── public/              # Statik dosyalar
+├── public/               # Statik dosyalar
 │   └── js/
 │       └── realtimeSpeechToText.js
-├── app.js              # Express uygulaması
-├── server.js           # Sunucu başlatma
-├── package.json        # Node.js bağımlılıkları
-└── .env               # Ortam değişkenleri (git'te yok)
-```
-
-## 🚀 Deployment
-
-### Heroku
-```bash
-# Heroku CLI ile
-heroku create mobilya-app
-heroku config:set GOOGLE_AI_API_KEY=your_key
-heroku config:set MONGODB_URI=your_mongodb_uri
-git push heroku backend:main
-```
-
-### Docker
-```bash
-# Docker build
-docker build -t mobilya-app .
-docker run -p 5000:5000 mobilya-app
+├── uploads/              # Yüklenen dosyalar
+├── app.js                # Express uygulaması
+├── server.js             # Sunucu başlatma
+├── package.json          # Node.js bağımlılıkları
+└── .env                  # Ortam değişkenleri (git'te yok)
 ```
 
 ## 📊 Kullanılan NPM Paketleri
@@ -170,6 +160,26 @@ docker run -p 5000:5000 mobilya-app
 ### Development Bağımlılıkları
 - `nodemon`: Development server auto-restart
 
+## ⚙️ Ses Tanıma Kütüphanesi
+
+`realtimeSpeechToText.js` modülü ile gerçek zamanlı ses tanıma özellikleri:
+
+- WebSocket bağlantısıyla sürekli ses tanıma
+- Konuşurken anlık metin oluşturma
+- Boyut formatlarını (örn. "beş metre dört") standart formata (5x4) dönüştürme
+- Hata durumlarına karşı Web Speech API yedekleme mekanizması
+- Kullanımı kolay JavaScript sınıfı
+
+```javascript
+// Örnek kullanım
+const speechToText = new RealtimeSpeechToText({
+  serverUrl: 'ws://localhost:5000',
+  onTranscription: (text, isFinal) => {
+    console.log(`Tanınan metin: ${text}`);
+  }
+});
+```
+
 ## 🤝 Katkıda Bulunma
 
 1. Fork yapın
@@ -178,22 +188,14 @@ docker run -p 5000:5000 mobilya-app
 4. Push edin (`git push origin feature/yeni-ozellik`)
 5. Pull Request açın
 
-## 📝 Lisans
-
-MIT License - Detaylar için [LICENSE](LICENSE) dosyasına bakın.
-
-## 📧 İletişim
-
-Proje: [https://github.com/zeybit/mobilya](https://github.com/zeybit/mobilya)
-
 ## ⚠️ Önemli Notlar
 
 - `.env` dosyasını GitHub'a pushlamamaya dikkat edin
-- `node_modules/` klasörü otomatik olarak git'ten hariç tutulur
 - Google AI API anahtarınızı güvenli tutun
 - MongoDB bağlantı stringinizi production'da güvenli saklayın
+- Web tarayıcısında mikrofon izni gerektirir
 
-## 🔧 Troubleshooting
+## 🔧 Sorun Giderme
 
 ### MongoDB Bağlantı Sorunu
 ```bash
@@ -203,14 +205,15 @@ sudo systemctl status mongod
 net start MongoDB
 ```
 
-### Port Çakışması
-```bash
-# Farklı port kullanmak için .env dosyasında PORT değişkenini güncelleyin
-PORT=3001
-```
-
-### API Anahtar Hatası
+### Google AI API Hatası
 ```bash
 # .env dosyasında GOOGLE_AI_API_KEY değişkeninin doğru olduğundan emin olun
 # Google AI Studio'dan yeni anahtar alabilirsiniz
+```
+
+### Sesli Tanıma Çalışmıyor
+```bash
+# Tarayıcı konsolunda hata mesajlarını kontrol edin
+# Tarayıcının mikrofon iznine sahip olduğundan emin olun
+# WebSocket sunucusunun çalıştığını doğrulayın
 ```

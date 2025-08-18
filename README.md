@@ -191,9 +191,9 @@ const speechToText = new RealtimeSpeechToText({
 ## ⚠️ Önemli Notlar
 
 - `.env` dosyasını GitHub'a pushlamamaya dikkat edin
+- `node_modules/` klasörü otomatik olarak git'ten hariç tutulur
 - Google AI API anahtarınızı güvenli tutun
 - MongoDB bağlantı stringinizi production'da güvenli saklayın
-- Web tarayıcısında mikrofon izni gerektirir
 
 ## 🔧 Sorun Giderme
 

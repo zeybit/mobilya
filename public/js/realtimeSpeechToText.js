@@ -1,7 +1,122 @@
 /**
- * Real-time Speech-to-Text Module
- * Uses MediaRecorder API and WebSocket for live transcription
+ * Ses tanıma sonuçlarını işleyerek boyut formatlarını düzelten fonksiyon
  */
+function processSpeechResult(speechText) {
+    if (!speechText) return speechText;
+    
+    let processedText = speechText.toLowerCase().trim();
+    
+    // Sayısal boyut kalıplarını tanımla
+    const dimensionPatterns = [
+        // "oda boyutu beş dört iki" -> "oda boyutu: 5x4x2"
+        /(oda boyutu|room size|oda ölçüsü|room dimensions)\s+((?:\b(?:bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b\s*){2,3})/gi,
+        
+        // "beş dört iki metre" -> "5x4x2"  
+        /((?:\b(?:bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b\s*){2,3})\s*(?:metre|meter|m|cm|santimetre|centimeter)/gi,
+        
+        // Standalone "beş dört iki" kalıbı
+        /\b((?:(?:bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s*){2,3})\b/gi
+    ];
+    
+    // Sayı çeviri tablosu
+    const numberMap = {
+        // Türkçe sayılar
+        'bir': '1', 'iki': '2', 'üç': '3', 'dört': '4', 'beş': '5',
+        'altı': '6', 'yedi': '7', 'sekiz': '8', 'dokuz': '9', 'on': '10',
+        'onbir': '11', 'oniki': '12', 'onüç': '13', 'ondört': '14', 'onbeş': '15',
+        'yirmi': '20', 'otuz': '30', 'kırk': '40', 'elli': '50',
+        
+        // İngilizce sayılar
+        'one': '1', 'two': '2', 'three': '3', 'four': '4', 'five': '5',
+        'six': '6', 'seven': '7', 'eight': '8', 'nine': '9', 'ten': '10',
+        'eleven': '11', 'twelve': '12', 'thirteen': '13', 'fourteen': '14', 'fifteen': '15',
+        'twenty': '20', 'thirty': '30', 'forty': '40', 'fifty': '50'
+    };
+    
+    // Kelime sayıları rakama çevir
+    function convertWordsToNumbers(text) {
+        let result = text;
+        for (const [word, number] of Object.entries(numberMap)) {
+            const regex = new RegExp(`\\b${word}\\b`, 'gi');
+            result = result.replace(regex, number);
+        }
+        return result;
+    }
+    
+    // Boyut kalıplarını işle
+    for (const pattern of dimensionPatterns) {
+        processedText = processedText.replace(pattern, (match, prefix, dimensions, suffix) => {
+            console.log('Boyut kalıbı bulundu:', { match, prefix, dimensions, suffix });
+            
+            // Eğer prefix varsa (oda boyutu gibi), onu koru
+            let result = prefix || '';
+            
+            if (dimensions) {
+                // Kelime sayıları rakama çevir
+                let numberText = convertWordsToNumbers(dimensions);
+                
+                // Rakamları çıkar ve x ile birleştir
+                const numbers = numberText.match(/\d+/g);
+                if (numbers && numbers.length >= 2) {
+                    const dimensionStr = numbers.join('x');
+                    
+                    if (prefix) {
+                        // "oda boyutu: 5x4x2" formatı
+                        result += ': ' + dimensionStr;
+                    } else {
+                        // Sadece "5x4x2" formatı
+                        result = dimensionStr;
+                        
+                        // Eğer suffix varsa (metre, cm gibi) ekle
+                        if (suffix) {
+                            result += ' ' + suffix;
+                        }
+                    }
+                    
+                    console.log('Dönüştürüldü:', result);
+                    return result;
+                }
+            }
+            
+            return match; // Dönüştürülemezse orijinali döndür
+        });
+    }
+    
+    // Birleşik sayıları ayır (542 -> 5 4 2)
+    processedText = processedText.replace(/\b(\d{3,})\b/g, (match) => {
+        // 3 haneli veya daha uzun sayıları kontrol et
+        if (match.length === 3) {
+            // 542 -> "5 4 2" (boyut olabilir)
+            return match.split('').join(' ');
+        } else if (match.length > 3 && match.length <= 6) {
+            // 4-6 haneli sayıları ikişer ikişer ayır
+            return match.match(/.{1,2}/g).join(' ');
+        }
+        return match;
+    });
+    
+    // Tekrar boyut kalıplarını işle (ayrılan sayılar için)
+    for (const pattern of dimensionPatterns) {
+        processedText = processedText.replace(pattern, (match, prefix, dimensions, suffix) => {
+            if (dimensions) {
+                let numberText = convertWordsToNumbers(dimensions);
+                const numbers = numberText.match(/\d+/g);
+                if (numbers && numbers.length >= 2) {
+                    const dimensionStr = numbers.join('x');
+                    if (prefix) {
+                        return prefix + ': ' + dimensionStr;
+                    }
+                    return dimensionStr + (suffix ? ' ' + suffix : '');
+                }
+            }
+            return match;
+        });
+    }
+    
+    console.log('Ses işleme sonucu:', { original: speechText, processed: processedText });
+    return processedText;
+}
+
 class RealtimeSpeechToText {
     constructor(options = {}) {
         this.options = {
@@ -11,7 +126,8 @@ class RealtimeSpeechToText {
             onError: options.onError || null,
             onStatusChange: options.onStatusChange || null,
             language: options.language || 'tr-TR',
-            chunkDuration: options.chunkDuration || 250, // milliseconds
+            chunkDuration: options.chunkDuration || 250,
+            processSpeech: options.processSpeech !== false, // Yeni: ses işleme aktif/pasif
             ...options
         };
 
@@ -376,25 +492,32 @@ class RealtimeSpeechToText {
     }
 
     handleTranscription(message) {
+        let processedText = message.text;
+        
+        // Ses işleme aktifse metni işle
+        if (this.options.processSpeech) {
+            processedText = processSpeechResult(message.text);
+        }
+        
         if (message.isFinal) {
             // Final transcription
-            this.transcriptionText += message.text + ' ';
+            this.transcriptionText += processedText + ' ';
             this.updateFinalText(this.transcriptionText);
             this.partialText = '';
             this.updatePartialText('');
             
-            // Call callback if provided
+            // Call callback with processed text
             if (this.options.onTranscription) {
-                this.options.onTranscription(message.text, true);
+                this.options.onTranscription(processedText, true);
             }
         } else {
             // Partial transcription
-            this.partialText = message.text;
+            this.partialText = processedText;
             this.updatePartialText(this.partialText);
             
-            // Call callback if provided
+            // Call callback with processed text
             if (this.options.onTranscription) {
-                this.options.onTranscription(message.text, false);
+                this.options.onTranscription(processedText, false);
             }
         }
     }
@@ -536,9 +659,52 @@ class RealtimeSpeechToText {
     }
 }
 
+// Web Speech API için geliştirilmiş handler
+function createEnhancedSpeechRecognition(onResult, language = 'tr-TR') {
+    if (typeof window === 'undefined') return null;
+    
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return null;
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = language;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+    recognition.continuous = false;
+
+    recognition.onresult = (event) => {
+        let finalTranscript = '';
+        let interimTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            
+            if (event.results[i].isFinal) {
+                // Final sonuçları işle
+                const processed = processSpeechResult(transcript);
+                finalTranscript += processed;
+            } else {
+                // Interim sonuçları işle
+                const processed = processSpeechResult(transcript);
+                interimTranscript += processed;
+            }
+        }
+
+        if (finalTranscript) {
+            onResult(finalTranscript, true);
+        } else if (interimTranscript) {
+            onResult(interimTranscript, false);
+        }
+    };
+
+    return recognition;
+}
+
 // Export for use in other modules
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = RealtimeSpeechToText;
+    module.exports = { RealtimeSpeechToText, processSpeechResult, createEnhancedSpeechRecognition };
 } else if (typeof window !== 'undefined') {
     window.RealtimeSpeechToText = RealtimeSpeechToText;
+    window.processSpeechResult = processSpeechResult;
+    window.createEnhancedSpeechRecognition = createEnhancedSpeechRecognition;
 }

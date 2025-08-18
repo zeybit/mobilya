@@ -2,6 +2,17 @@ const Product = require('../models/productModel');
 const axios = require('axios');
 require('dotenv').config();
 
+// Move categoryMapping to module scope so it can be accessed by all functions
+const categoryMapping = {
+    'çocuk odası': '68237650d79c9eb5f5520d62',
+    'bahçe': '68237650d79c9eb5f5520d63',
+    'çalışma odası': '68237650d79c9eb5f5520d64',
+    'oturma odası': '68237650d79c9eb5f5520d65',
+    'yatak odası': '68237650d79c9eb5f5520d66',
+    'mutfak': '68237650d79c9eb5f5520d67',
+    'yemek odası': '68237650d79c9eb5f5520d68'
+};
+
 const keywordMappings = {
     renk: {
         beyaz: 'beyaz', white: 'beyaz',
@@ -83,6 +94,53 @@ const colorCompatibility = {
     altın: ['siyah', 'beyaz', 'gri']
 };
 
+// Oda boyutu standardizasyonu ve sınıflandırması (Veritabanına uygun - 3 sınıf)
+const ROOM_SIZE_STANDARDS = {
+    'küçük': { min: 0, max: 25, standardSizes: ['3x4', '3x5', '4x4', '4x5'], description: '12-25 m² arası' }, // Küçük odalar: 12-25 m²
+    'small': { min: 0, max: 25, standardSizes: ['3x4', '3x5', '4x4', '4x5'], description: '12-25 m² arası' },
+    'orta': { min: 25, max: 50, standardSizes: ['4x6', '5x6', '5x7', '6x7'], description: '25-50 m² arası' }, // Orta odalar: 25-50 m²
+    'medium': { min: 25, max: 50, standardSizes: ['4x6', '5x6', '5x7', '6x7'], description: '25-50 m² arası' },
+    'büyük': { min: 50, max: 200, standardSizes: ['6x8', '7x9', '8x8', '8x10'], description: '50 m² ve üzeri' }, // Büyük odalar: 50+ m²
+    'large': { min: 50, max: 200, standardSizes: ['6x8', '7x9', '8x8', '8x10'], description: '50 m² ve üzeri' }
+};
+
+// Oda boyutlarından hacim ve sınıf hesaplama fonksiyonu (3 sınıf: küçük, orta, büyük)
+function calculateRoomSizeFromDimensions(width, depth, height) {
+    // Genişlik, derinlik ve yükseklik ile hacim hesapla (metre cinsinden)
+    // Eğer yükseklik yoksa, alan bazlı sınıflandırma yap
+    
+    if (height && height > 0) {
+        // Hacim hesaplama (m³)
+        const volumeM3 = width * depth * height;
+        
+        // Hacim bazlı sınıflandırma (3 sınıf)
+        if (volumeM3 <= 75) return 'küçük';     // 75 m³'e kadar küçük oda
+        if (volumeM3 <= 150) return 'orta';    // 150 m³'e kadar orta oda  
+        return 'büyük';                        // 150 m³ üzeri büyük oda
+    } else {
+        // Alan bazlı sınıflandırma (m²) - 3 sınıf
+        const areaM2 = width * depth;
+        
+        if (areaM2 <= 25) return 'küçük';     // 25 m²'ye kadar küçük
+        if (areaM2 <= 50) return 'orta';      // 50 m²'ye kadar orta
+        return 'büyük';                       // 50 m² üzeri büyük
+    }
+}
+
+// Oda boyutu string'ini metre kareleye çevirme
+function parseRoomSizeToArea(roomSizeStr) {
+    if (!roomSizeStr) return null;
+    
+    const normalized = roomSizeStr.toLowerCase().trim();
+    const standards = ROOM_SIZE_STANDARDS[normalized];
+    
+    if (standards) {
+        // Ortalama değer döndür
+        return (standards.min + standards.max) / 2;
+    }
+    return null;
+}
+
 exports.getProductRecommendations = async (req, res) => {
     try {
         const userInput = (req.query.query || '').toLowerCase().trim();
@@ -146,6 +204,24 @@ exports.getProductRecommendations = async (req, res) => {
         // Tüm ürünleri getir (stok kontrolü kaldırıldı)
         const products = await Product.find({}).populate('category').populate('tags');
         console.log('Bulunan ürün sayısı:', products.length); // Debug log
+
+        // Bahçe kategorisindeki ürünleri kontrol et
+        const gardenCategoryId = categoryMapping['bahçe'];
+        const gardenProducts = products.filter(p => 
+            p.category && 
+            (p.category.toString() === gardenCategoryId || 
+             (p.category._id && p.category._id.toString() === gardenCategoryId) ||
+             (p.category.name && p.category.name.toLowerCase().includes('bahçe')))
+        );
+        console.log(`Bahçe kategorisindeki ürün sayısı: ${gardenProducts.length}`);
+        if (gardenProducts.length === 0) {
+            console.log('Kategori ID kontrolü:', categoryMapping['bahçe']);
+            console.log('Mevcut kategori örnekleri:', products.slice(0, 3).map(p => ({
+                name: p.name,
+                categoryId: p.category && p.category._id ? p.category._id.toString() : p.category,
+                categoryName: p.category && p.category.name ? p.category.name : 'N/A'
+            })));
+        }
 
         const scoredProducts = scoreProducts(products, extractedFeatures, userInput)
             .filter(p => p.score > 0)
@@ -276,26 +352,55 @@ You are a multilingual furniture assistant. Extract the following features from 
 
 Input: "${userInput}"
 
+IMPORTANT PREPROCESSING:
+First, fix common text issues in Turkish:
+- "o da" → "oda" (room)
+- "odaboyutu" → "oda boyutu"
+- "oda boyut" → "oda boyutu" 
+- Apply fuzzy matching for room-related terms
+
 Extract these features:
 - color: (product color, e.g. "beyaz", "white", "gri", "gray", "mavi", "blue")
 - room: (room type, e.g. "oturma odası", "living room", "çocuk odası", "kids room", "bahçe", "garden")
 - style: (style, e.g. "modern", "minimalist", "vintage", "industrial")
 - productType: (product type, e.g. "koltuk", "sofa", "couch", "masa", "table", "furniture" should be ignored as it's too generic)
 - roomColor: (the color of the room, e.g. "beyaz", "white", "gri", "gray")
-- roomSize: (the size of the room, e.g. "küçük", "small", "büyük", "large", "orta", "medium")
+- roomSize: (the descriptive size of the room - ONLY these values: "küçük", "small", "orta", "medium", "büyük", "large")
 - budget: (budget or price range, e.g. "5000 TL", "$1000", "orta", "düşük", "yüksek", "low", "medium", "high")
 - brand: (brand name if mentioned)
 - material: (material type, e.g. "ahşap", "wood", "metal", "fabric", "deri", "leather", "cam", "glass", "mdf", "plastik", "plastic", "kadife", "velvet", "mermer", "marble")
 - quantity: (number of products, e.g. "2", "iki", "two")
 - purpose: (intended use, e.g. "çalışmak için", "for working", "misafirler için", "for guests")
 - warranty: (warranty period, e.g. "1 yıl", "2 yıl", "3 yıl", "1 year", "2 years", "3 years")
+- productDimensions: (product dimensions - ONLY if dimensions are mentioned WITHOUT room keywords. Convert to METERS format like "2.0x1.5x0.8")
+- roomDimensions: (room dimensions - ONLY if explicitly mentioned with room keywords or context. Convert to METERS format like "4.0x3.0x2.5")
 
-IMPORTANT RULES:
-1. If the input contains "furniture", "ürün", "mobilya" without specific product type, leave productType empty
-2. If the input contains "living room furniture", extract "living room" as room and leave productType empty
-3. If the input contains "oturma odası ürünü", extract "oturma odası" as room and leave productType empty
-4. If the input contains "modern furniture", extract "modern" as style and leave productType empty
-5. Only extract specific product types like "koltuk", "sofa", "couch", "masa", "table", "chair", etc.
+CRITICAL DIMENSION RULES:
+1. ROOM DIMENSIONS ARE ALREADY IN METERS - DO NOT CONVERT
+2. Users will input room dimensions in meters (e.g. "oda boyutu: 4x5x2.5" means 4m x 5m x 2.5m)
+3. PRIORITY ORDER for dimension extraction:
+   a) If contains "oda boyutu", "room size", "oda ölçüsü", "room dimensions" → extract as roomDimensions DIRECTLY
+   b) If contains "o da boyutu" (typo for "oda boyutu") → extract as roomDimensions DIRECTLY
+   c) If contains room context words like "oda", "odanın", "room" near dimensions → extract as roomDimensions DIRECTLY
+   d) If contains product name + dimensions → extract as productDimensions (may need conversion)
+   e) If standalone dimensions without clear context → analyze surrounding words for hints
+4. NEVER extract the same dimensions for both productDimensions and roomDimensions
+5. When in doubt about context, prefer roomDimensions if any room-related words are present
+
+ROOM SIZE CLASSIFICATION (Based on database - 3 categories only):
+- "küçük"/"small": rooms 12-25 m² (e.g. single bedrooms, small studies)
+- "orta"/"medium": rooms 25-50 m² (e.g. master bedrooms, living rooms in apartments)
+- "büyük"/"large": rooms 50+ m² (e.g. large living rooms, open plan areas, luxury spaces)
+
+EXAMPLES:
+- "oda boyutu: 4x5x2.5" → roomDimensions: "4.0x5.0x2.5", productDimensions: "" (DIRECT - already meters)
+- "oda boyutu 25x40x20" → roomDimensions: "25.0x40.0x20.0", productDimensions: "" (DIRECT - already meters)
+- "o da boyutu 3.5x4x2.8" → roomDimensions: "3.5x4.0x2.8", productDimensions: "" (fixing typo, DIRECT)
+- "beyaz koltuk oda boyutu: 6x8" → roomDimensions: "6.0x8.0", productDimensions: "" (DIRECT)
+- "200x100 masa" → productDimensions: "2.0x1.0", roomDimensions: "" (product dimension, convert cm to m)
+- "küçük oda için koltuk" → roomSize: "küçük", roomDimensions: "", productDimensions: ""
+- "150x80x75 masa orta boyutta oda" → productDimensions: "1.5x0.8x0.75", roomSize: "orta"
+- "300x200 oda için masa" → roomDimensions: "300.0x200.0", productDimensions: "" (room context, DIRECT)
 
 Return only a valid JSON like this:
 {
@@ -310,7 +415,9 @@ Return only a valid JSON like this:
   "material": "",
   "quantity": "",
   "purpose": "",
-  "warranty": ""
+  "warranty": "",
+  "productDimensions": "",
+  "roomDimensions": ""
 }
 
 If a feature is not present, leave it as an empty string.
@@ -339,22 +446,203 @@ Return only the JSON, no explanation.
         const productType = normalizeLLMValue(features.productType, keywordMappings.ürün);
         const room = normalizeLLMValue(features.room, keywordMappings.oda);
         const roomColor = normalizeLLMValue(features.roomColor, keywordMappings.renk);
-        const roomSize = features.roomSize?.toLowerCase().trim() || '';
         const budget = features.budget?.toLowerCase().trim() || '';
         const material = normalizeLLMValue(features.material, keywordMappings.malzeme);
         const warranty = features.warranty?.toLowerCase().trim() || '';
 
-        // Oda boyutu (en x boy x yükseklik) gibi bir formatı yakala
-        let roomDimensions = null;
-        // Türkçe ve İngilizce varyasyonları destekle
-        const roomSizeRegex = /(oda boyutu|room size|oda ölçüsü|room dimensions)\s*[:=\-]?\s*(\d{2,4})[x×](\d{2,4})(?:[x×](\d{2,4}))?/i;
-        const match = userInput.match(roomSizeRegex);
-        if (match) {
-            roomDimensions = {
-                width: parseInt(match[2], 10),
-                depth: parseInt(match[3], 10),
-                height: match[4] ? parseInt(match[4], 10) : undefined
+        // Oda boyutu normalize et
+        let roomSize = '';
+        if (features.roomSize) {
+            const normalizedRoomSize = features.roomSize.toLowerCase().trim();
+            // roomSize mapping (3 sınıf sadece)
+            const roomSizeMap = {
+                'küçük': 'küçük', 'small': 'küçük',
+                'orta': 'orta', 'medium': 'orta',
+                'büyük': 'büyük', 'large': 'büyük'
+                // 'çok büyük' kaldırıldı - veritabanında yok
             };
+            roomSize = roomSizeMap[normalizedRoomSize] || '';
+        }
+
+        // Boyut çıkarma fonksiyonu (değerleri direkt metre olarak kabul eder)
+        function parseDimensionsToMeters(dimensionStr) {
+            if (!dimensionStr) return null;
+            
+            const dimMatch = dimensionStr.match(/(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)(?:\s*[x×]\s*(\d+(?:\.\d+)?))?/i);
+            if (dimMatch) {
+                let width = parseFloat(dimMatch[1]);
+                let depth = parseFloat(dimMatch[2]);
+                let height = dimMatch[3] ? parseFloat(dimMatch[3]) : undefined;
+
+                // Değerleri direkt metre olarak kabul et (cm'den çevirme yok)
+                // Kullanıcı zaten "oda boyutu: 4x5x2.5" şeklinde metre cinsinden girecek
+                
+                return {
+                    width: Math.round(width * 100) / 100, // 2 ondalık basamak
+                    depth: Math.round(depth * 100) / 100,
+                    height: height ? Math.round(height * 100) / 100 : undefined
+                };
+            }
+            return null;
+        }
+
+        // AI'dan gelen boyut bilgilerini işle
+        let productDimensions = null;
+        let roomDimensions = null;
+
+        // Önce AI çıkarımını kontrol et
+        if (features.roomDimensions && features.productDimensions) {
+            console.warn('AI hem ürün hem oda boyutu çıkardı, kontrol ediliyor...');
+            
+            const hasRoomKeywords = /\b(oda boyutu|room size|oda ölçüsü|room dimensions)\s*[:=\-]/i.test(userInput);
+            
+            if (hasRoomKeywords) {
+                roomDimensions = parseDimensionsToMeters(features.roomDimensions);
+                productDimensions = null;
+                console.log('Oda boyutu anahtar kelimesi bulundu, sadece oda boyutu kullanılıyor');
+            } else {
+                productDimensions = parseDimensionsToMeters(features.productDimensions);
+                roomDimensions = null;
+                console.log('Oda boyutu anahtar kelimesi bulunamadı, sadece ürün boyutu kullanılıyor');
+            }
+        } else if (features.roomDimensions) {
+            roomDimensions = parseDimensionsToMeters(features.roomDimensions);
+        } else if (features.productDimensions) {
+            productDimensions = parseDimensionsToMeters(features.productDimensions);
+        }
+
+        // Eğer AI başarısız olursa, regex ile fallback yap
+        if (!productDimensions && !roomDimensions) {
+            console.log('AI boyut çıkarımı başarısız, regex fallback çalıştırılıyor...');
+            
+            // Önce "o da boyutu" typo'sunu düzelt
+            let correctedInput = userInput
+                .replace(/\bo\s+da\s+boyutu/gi, 'oda boyutu')
+                .replace(/\bodaboyutu/gi, 'oda boyutu')
+                .replace(/\boda\s+boyut\b/gi, 'oda boyutu');
+            
+            console.log('Düzeltilmiş input:', correctedInput);
+            
+            // Önce oda boyutu anahtar kelimelerini ara (düzeltilmiş metinde)
+            const roomSizePatterns = [
+                /(oda boyutu|room size|oda ölçüsü|room dimensions)\s*[:=\-]?\s*(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)(?:\s*[x×]\s*(\d+(?:\.\d+)?))?/gi,
+                // Oda kontekstli boyutlar için ek pattern
+                /(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)(?:\s*[x×]\s*(\d+(?:\.\d+)?))?\s*(oda|room|odanın|odası)/gi
+            ];
+            
+            let foundRoomDimensions = false;
+            for (const pattern of roomSizePatterns) {
+                const match = correctedInput.match(pattern);
+                if (match) {
+                    // İlk pattern için (oda boyutu: 300x400)
+                    if (pattern.source.includes('oda boyutu')) {
+                        let width = parseFloat(match[2]);
+                        let depth = parseFloat(match[3]);
+                        let height = match[4] ? parseFloat(match[4]) : undefined;
+
+                        // Değerleri direkt metre olarak kabul et (çevirme yok)
+                        // Kullanıcı "oda boyutu: 4x5x2.5" şeklinde metre cinsinden girecek
+                        
+                        roomDimensions = {
+                            width: Math.round(width * 100) / 100,
+                            depth: Math.round(depth * 100) / 100,
+                            height: height ? Math.round(height * 100) / 100 : undefined
+                        };
+                        foundRoomDimensions = true;
+                        console.log('Regex ile oda boyutu bulundu (metre):', roomDimensions);
+                        break;
+                    }
+                    // İkinci pattern için (300x400 oda)
+                    else {
+                        let width = parseFloat(match[1]);
+                        let depth = parseFloat(match[2]);
+                        let height = match[3] ? parseFloat(match[3]) : undefined;
+
+                        // Değerleri direkt metre olarak kabul et (çevirme yok)
+                        
+                        roomDimensions = {
+                            width: Math.round(width * 100) / 100,
+                            depth: Math.round(depth * 100) / 100,
+                            height: height ? Math.round(height * 100) / 100 : undefined
+                        };
+                        foundRoomDimensions = true;
+                        console.log('Regex ile kontekst oda boyutu bulundu (metre):', roomDimensions);
+                        break;
+                    }
+                }
+            }
+            
+            // Oda boyutu bulunamadıysa, ürün boyutu ara
+            if (!foundRoomDimensions) {
+                const productSizePatterns = [
+                    /(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)(?:\s*[x×]\s*(\d+(?:\.\d+)?))?\s*(cm|mm|m)?/gi
+                ];
+                
+                for (const pattern of productSizePatterns) {
+                    const match = userInput.match(pattern);
+                    if (match) {
+                        const fullMatch = match[0];
+                        const dimensions = fullMatch.match(/(\d+(?:\.\d+)?)/g);
+                        if (dimensions && dimensions.length >= 2) {
+                            let width = parseFloat(dimensions[0]);
+                            let depth = parseFloat(dimensions[1]);
+                            let height = dimensions[2] ? parseFloat(dimensions[2]) : undefined;
+
+                            // Birim kontrolü ve dönüşüm
+                            const unit = match[4] || '';
+                            if (unit === 'm') {
+                                // Zaten metre cinsinden
+                            } else if (unit === 'mm') {
+                                width = width / 1000;
+                                depth = depth / 1000;
+                                if (height) height = height / 1000;
+                            } else {
+                                // Birim belirtilmemişse, büyük değerler cm kabul edilir
+                                if (width > 50) width = width / 100;
+                                if (depth > 50) depth = depth / 100;
+                                if (height && height > 10) height = height / 100;
+                            }
+
+                            productDimensions = {
+                                width: Math.round(width * 100) / 100,
+                                depth: Math.round(depth * 100) / 100,
+                                height: height ? Math.round(height * 100) / 100 : undefined
+                            };
+                            console.log('Regex ile ürün boyutu bulundu (metre):', productDimensions);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Eğer roomSize belirtilmemişse ama roomDimensions varsa, boyuttan hesapla
+        if (!roomSize && roomDimensions) {
+            // Hacim veya alan hesaplama (metre cinsinden)
+            if (roomDimensions.height) {
+                const volumeM3 = roomDimensions.width * roomDimensions.depth * roomDimensions.height;
+                roomSize = calculateRoomSizeFromDimensions(roomDimensions.width, roomDimensions.depth, roomDimensions.height);
+                console.log(`Oda boyutu hacimden hesaplandı: ${volumeM3.toFixed(1)} m³ → ${roomSize}`);
+            } else {
+                const areaM2 = roomDimensions.width * roomDimensions.depth;
+                roomSize = calculateRoomSizeFromDimensions(roomDimensions.width, roomDimensions.depth, 0);
+                console.log(`Oda boyutu alandan hesaplandı: ${areaM2.toFixed(1)} m² → ${roomSize}`);
+            }
+        }
+
+        console.log('Final boyut kontrolü (metre):', { 
+            productDimensions, 
+            roomDimensions,
+            roomSize,
+            originalInput: userInput,
+            aiProductDims: features.productDimensions,
+            aiRoomDims: features.roomDimensions
+        });
+
+        // Çifte kontrol
+        if (productDimensions && roomDimensions) {
+            console.warn('Hala her iki boyut da mevcut, oda boyutu öncelikli tutulacak');
+            productDimensions = null;
         }
 
         return {
@@ -368,40 +656,103 @@ Return only the JSON, no explanation.
             material: material ? [material] : [],
             warranty,
             colorCompatibility: colorCompatibility[color] || [],
-            roomDimensions
+            roomDimensions,
+            productDimensions
         };
+
     } catch (error) {
         console.error('LLM/AI Hatası:', {
             message: error.message,
             response: error.response?.data,
             status: error.response?.status
         });
-        // Fallback: eski keywordMappings tabanlı çıkarım
+        
+        // Fallback: regex ile ayrıştırma
         const input = userInput.toLowerCase();
-        const colors = Object.entries(keywordMappings.renk)
-            .filter(([key]) => input.includes(key))
-            .map(([_, value]) => value);
-        const styles = Object.entries(keywordMappings.stil)
-            .filter(([key]) => input.includes(key))
-            .map(([_, value]) => value);
-        const rooms = Object.entries(keywordMappings.oda)
-            .filter(([key]) => input.includes(key))
-            .map(([_, value]) => value);
-        const productTypes = Object.entries(keywordMappings.ürün)
-            .filter(([key, val]) => input.includes(key) && val !== '') // Boş değerleri filtrele
-            .map(([_, val]) => val);
-        // Basit fallback, diğer yeni alanlar boş döner
+        
+        // Önce "o da boyutu" typo'sunu düzelt
+        let correctedInput = userInput
+            .replace(/\bo\s+da\s+boyutu/gi, 'oda boyutu')
+            .replace(/\bodaboyutu/gi, 'oda boyutu')
+            .replace(/\boda\s+boyut\b/gi, 'oda boyutu')
+            .toLowerCase();
+        
+        console.log('Fallback - Düzeltilmiş input:', correctedInput);
+        
+        let productDimensions = null;
+        let roomDimensions = null;
+        let roomSize = '';
+
+        // Oda boyutu sınıflandırması (3 sınıf sadece)
+        const roomSizeKeywords = {
+            'küçük': 'küçük', 'small': 'küçük',
+            'orta': 'orta', 'medium': 'orta',
+            'büyük': 'büyük', 'large': 'büyük'
+            // 'çok büyük' kaldırıldı - veritabanında yok
+        };
+
+        for (const [key, value] of Object.entries(roomSizeKeywords)) {
+            if (correctedInput.includes(key)) {
+                roomSize = value;
+                break;
+            }
+        }
+        
+        // Fallback boyut çıkarımı - düzeltilmiş input kullan, değerleri direkt metre olarak kabul et
+        const roomSizeRegex = /(oda boyutu|room size|oda ölçüsü|room dimensions)\s*[:=\-]?\s*(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)(?:\s*[x×]\s*(\d+(?:\.\d+)?))?/i;
+        const roomMatch = correctedInput.match(roomSizeRegex);
+        if (roomMatch) {
+            let width = parseFloat(roomMatch[2]); // Direkt metre olarak kabul et
+            let depth = parseFloat(roomMatch[3]);
+            let height = roomMatch[4] ? parseFloat(roomMatch[4]) : undefined;
+            
+            roomDimensions = {
+                width: Math.round(width * 100) / 100,
+                depth: Math.round(depth * 100) / 100,
+                height: height ? Math.round(height * 100) / 100 : undefined
+            };
+            console.log('Fallback: Oda boyutu bulundu (metre):', roomDimensions);
+        }
+        
+        // Oda kontekstli boyutlar için ek kontrol
+        if (!roomDimensions) {
+            const contextRoomRegex = /(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)(?:\s*[x×]\s*(\d+(?:\.\d+)?))?\s*(oda|room|odanın|odası)/i;
+            const contextMatch = correctedInput.match(contextRoomRegex);
+            if (contextMatch) {
+                let width = parseFloat(contextMatch[1]); // Direkt metre olarak kabul et
+                let depth = parseFloat(contextMatch[2]); 
+                let height = contextMatch[3] ? parseFloat(contextMatch[3]) : undefined;
+                
+                roomDimensions = {
+                    width: Math.round(width * 100) / 100,
+                    depth: Math.round(depth * 100) / 100,
+                    height: height ? Math.round(height * 100) / 100 : undefined
+                };
+                console.log('Fallback: Kontekst oda boyutu bulundu (metre):', roomDimensions);
+            }
+        }
+        
         return {
-            colors,
-            styles,
-            rooms,
-            productTypes,
+            colors: Object.entries(keywordMappings.renk)
+                .filter(([key]) => correctedInput.includes(key))
+                .map(([_, value]) => value),
+            styles: Object.entries(keywordMappings.stil)
+                .filter(([key]) => correctedInput.includes(key))
+                .map(([_, value]) => value),
+            rooms: Object.entries(keywordMappings.oda)
+                .filter(([key]) => correctedInput.includes(key))
+                .map(([_, value]) => value),
+            productTypes: Object.entries(keywordMappings.ürün)
+                .filter(([key, val]) => correctedInput.includes(key) && val !== '')
+                .map(([_, val]) => val),
             roomColors: [],
-            roomSize: '',
+            roomSize,
             budget: '',
-            material: '',
+            material: [],
             warranty: '',
-            colorCompatibility: colors.length ? (colorCompatibility[colors[0]] || []) : []
+            colorCompatibility: [],
+            productDimensions,
+            roomDimensions
         };
     }
 }
@@ -483,30 +834,134 @@ function scoreProducts(products, features, userInput = '') {
     features.colorCompatibility = features.colorCompatibility || [];
     features.roomSize = features.roomSize || '';
     features.budget = features.budget || '';
-    features.material = features.material || '';
-    features.roomDimensions = features.roomDimensions || null; // {width, depth, height}
+    features.material = features.material || [];
+    features.roomDimensions = features.roomDimensions || null;
+    features.productDimensions = features.productDimensions || null;
 
-    const categoryMapping = {
-        'çocuk odası': '68237650d79c9eb5f5520d62',
-        'bahçe': '68237650d79c9eb5f5520d63',
-        'çalışma odası': '68237650d79c9eb5f5520d64',
-        'oturma odası': '68237650d79c9eb5f5520d65',
-        'yatak odası': '68237650d79c9eb5f5520d66',
-        'mutfak': '68237650d79c9eb5f5520d67',
-        'yemek odası': '68237650d79c9eb5f5520d68'
-    };
+    function isProductMatchingDimensions(product, searchDimensions) {
+        if (!searchDimensions) return true;
+        if (!product.width || !product.depth) return true;
+        
+        const tolerance = 0.5; // 50cm tolerans (metre cinsinden)
+        
+        // Ürün boyutlarını metre cinsine çevir (cm'den)
+        const productDims = [
+            (product.width || 0) / 100,
+            (product.depth || 0) / 100,
+            (product.height || 0) / 100
+        ].filter(d => d > 0).sort((a, b) => a - b);
+        
+        // Arama boyutları zaten metre cinsinde
+        const searchDims = [
+            searchDimensions.width || 0,
+            searchDimensions.depth || 0,
+            searchDimensions.height || 0
+        ].filter(d => d > 0).sort((a, b) => a - b);
+        
+        console.log('Boyut karşılaştırması (metre):', {
+            productDims,
+            searchDims,
+            productOriginal: { width: product.width/100, depth: product.depth/100, height: product.height/100 },
+            searchOriginal: searchDimensions
+        });
+        
+        // Boyut kontrolü (metre cinsinden)
+        if (productDims.length !== searchDims.length) {
+            const minLength = Math.min(productDims.length, searchDims.length);
+            if (minLength < 2) return true;
+            
+            for (let i = 0; i < Math.min(2, minLength); i++) {
+                if (Math.abs(productDims[i] - searchDims[i]) > tolerance) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        
+        for (let i = 0; i < productDims.length; i++) {
+            if (Math.abs(productDims[i] - searchDims[i]) > tolerance) {
+                console.log(`Boyut uyumsuzluğu: ${productDims[i].toFixed(2)}m vs ${searchDims[i].toFixed(2)}m, fark: ${Math.abs(productDims[i] - searchDims[i]).toFixed(2)}m`);
+                return false;
+            }
+        }
+        
+        console.log('Boyut eşleşmesi başarılı!');
+        return true;
+    }
 
     function isProductFitToRoom(product, roomDimensions) {
         if (!roomDimensions) return true;
         if (!product.width || !product.depth) return true;
-        if (product.width > roomDimensions.width || product.depth > roomDimensions.depth) return false;
-        if (roomDimensions.height && product.height && product.height > roomDimensions.height) return false;
+        
+        // Ürün boyutlarını metre cinsine çevir
+        const productWidthM = product.width / 100;
+        const productDepthM = product.depth / 100;
+        const productHeightM = product.height ? product.height / 100 : 0;
+        
+        if (productWidthM > roomDimensions.width || productDepthM > roomDimensions.depth) return false;
+        if (roomDimensions.height && productHeightM && productHeightM > roomDimensions.height) return false;
         return true;
     }
 
-    return products.map(product => {
-        // Oda uygunluk kontrolü (en başta uygunsuzsa skor 0)
+    // RoomSize eşleşmesi için geliştirilmiş kontrol
+    function isProductSuitableForRoomSize(product, roomSize) {
+        if (!roomSize) return true;
+        
+        // Ürünün roomSize bilgisi extraAttributes'da mı var?
+        const productRoomSize = product.extraAttributes?.roomSize;
+        if (!productRoomSize) return true; // Ürünün roomSize bilgisi yoksa her odaya uygun kabul et
+        
+        // Normalize both values
+        const normalizedProductRoomSize = productRoomSize.toLowerCase().trim();
+        const normalizedSearchRoomSize = roomSize.toLowerCase().trim();
+        
+        // Direct match
+        if (normalizedProductRoomSize === normalizedSearchRoomSize) return true;
+        
+        // Cross-language match (3 sınıf sadece)
+        const roomSizeMapping = {
+            'küçük': ['küçük', 'small'],
+            'orta': ['orta', 'medium'],  
+            'büyük': ['büyük', 'large']
+            // 'çok büyük' kaldırıldı - veritabanında yok
+        };
+        
+        for (const [key, values] of Object.entries(roomSizeMapping)) {
+            if (values.includes(normalizedSearchRoomSize) && values.includes(normalizedProductRoomSize)) {
+                return true;
+            }
+        }
+        
+        // Esneklik için: bir seviye yukarı/aşağı da kabul edilebilir (3 sınıf)
+        const sizeHierarchy = ['küçük', 'orta', 'büyük'];
+        const englishSizeHierarchy = ['small', 'medium', 'large'];
+        
+        const searchIndex = Math.max(
+            sizeHierarchy.indexOf(normalizedSearchRoomSize),
+            englishSizeHierarchy.indexOf(normalizedSearchRoomSize)
+        );
+        
+        const productIndex = Math.max(
+            sizeHierarchy.indexOf(normalizedProductRoomSize),
+            englishSizeHierarchy.indexOf(normalizedProductRoomSize)
+        );
+        
+        // Eğer her ikisi de geçerli indekslerse, 1 seviye fark kabul edilebilir
+        if (searchIndex !== -1 && productIndex !== -1) {
+            return Math.abs(searchIndex - productIndex) <= 1;
+        }
+        
+        return false;
+    }
+
+    const scoredProducts = products.map(product => {
+        // Oda uygunluk kontrolü
         if (features.roomDimensions && !isProductFitToRoom(product, features.roomDimensions)) {
+            return { product, score: 0 };
+        }
+        
+        // Ürün boyutu kontrolü
+        if (features.productDimensions && !isProductMatchingDimensions(product, features.productDimensions)) {
             return { product, score: 0 };
         }
 
@@ -515,436 +970,164 @@ function scoreProducts(products, features, userInput = '') {
         const prodColor = normalizeText(product.color || '');
         const productName = normalizeText(product.name);
         const productDesc = normalizeText(product.description);
-        const prodMaterial = normalizeText(product.material || '');
-        const prodRoomSize = normalizeText(product.roomSize || '');
-        const prodBudget = normalizeText(product.budget || '');
+        const prodMaterial = normalizeText(product.materialType || '');
 
-        // Ürün rengi eşleşmesi - Gelişmiş optimizasyon
-        if (features.colors.length) {
+        // Boyut eşleşmesi için bonus puan
+        if (features.productDimensions) {
             totalCriteria++;
-            let colorMatch = false;
-            let exactColorMatch = false;
-            
+            if (isProductMatchingDimensions(product, features.productDimensions)) {
+                score += 50; // Boyut eşleşmesi için yüksek puan
+                matchCount++;
+            }
+        }
+
+        // Renk eşleşmesi
+        if (features.colors.length > 0) {
+            totalCriteria++;
             for (const color of features.colors) {
-                const normalizedColor = normalizeText(color);
-                
-                // Ürün rengi ile tam eşleşme
-                if (prodColor === normalizedColor) {
-                    colorMatch = true;
-                    exactColorMatch = true;
-                    break;
-                }
-                
-                // Ürün adında renk geçiyor
-                if (productName.includes(normalizedColor)) {
-                    colorMatch = true;
-                    exactColorMatch = true;
-                    break;
-                }
-                
-                // Açıklamada renk geçiyor
-                if (productDesc.includes(normalizedColor)) {
-                    colorMatch = true;
+                if (prodColor === color || text.includes(color)) {
+                    score += 25;
+                    matchCount++;
                     break;
                 }
             }
-            
-            if (colorMatch) {
-                if (exactColorMatch) {
-                    score += 35; // Tam renk eşleşmesi için yüksek puan
-                } else {
-                    score += 20; // Açıklamada geçen renk için düşük puan
-                }
-                matchCount++;
-            }
         }
 
-        // Oda rengi uyumluluğu kontrolü
-        if (features.roomColors.length) {
+        // Stil eşleşmesi
+        if (features.styles.length > 0) {
             totalCriteria++;
-            const roomColor = features.roomColors[0];
-            const compatibleColors = features.colorCompatibility || [];
-            const isCompatible = compatibleColors.some(compatibleColor => {
-                const normalizedCompatibleColor = normalizeText(compatibleColor);
-                return prodColor === normalizedCompatibleColor || 
-                       productName.includes(normalizedCompatibleColor) ||
-                       productDesc.includes(normalizedCompatibleColor);
-            });
-            if (isCompatible) {
-                score += 25;
-                matchCount++;
-            }
-        }
-
-        // Kategori eşleşmesi - Gelişmiş optimizasyon
-        if (features.rooms.length) {
-            totalCriteria++;
-            const productCategoryId = product.category?._id?.toString();
-            const productCategoryName = normalizeText(product.category?.name || '');
-            
-            const match = features.rooms.some(room => {
-                const normalizedRoom = normalizeText(room);
-                if (categoryMapping[normalizedRoom] === productCategoryId) {
-                    return true;
-                }
-                return productCategoryName === normalizedRoom;
-            });
-            
-            if (match) { 
-                score += 20;
-                matchCount++; 
-            }
-        }
-        
-        // Ürün tipi ile kategori uyumluluğu bonus puanı
-        if (features.productTypes.length && product.category?.name) {
-            const productType = features.productTypes[0];
-            const categoryName = product.category.name.toLowerCase();
-            
-            // Ürün tipi ile kategori uyumluluğu kontrolü
-            const typeCategoryCompatibility = {
-                'koltuk': ['oturma odası', 'salon'],
-                'kanepe': ['oturma odası', 'salon'],
-                'sofa': ['oturma odası', 'salon'],
-                'couch': ['oturma odası', 'salon'],
-                'yatak': ['yatak odası'],
-                'bed': ['yatak odası'],
-                'komodin': ['yatak odası'],
-                'nightstand': ['yatak odası'],
-                'gardırop': ['yatak odası'],
-                'wardrobe': ['yatak odası'],
-                'masa': ['çalışma odası', 'yemek odası', 'mutfak'],
-                'table': ['çalışma odası', 'yemek odası', 'mutfak'],
-                'sandalye': ['çalışma odası', 'yemek odası', 'mutfak'],
-                'chair': ['çalışma odası', 'yemek odası', 'mutfak']
-            };
-            
-            const compatibleCategories = typeCategoryCompatibility[productType] || [];
-            if (compatibleCategories.some(cat => categoryName.includes(cat))) {
-                score += 5; // Uyumlu kategori bonus puanı
-            }
-        }
-
-        // Stil eşleşmesi - Gelişmiş optimizasyon
-        if (features.styles.length) {
-            totalCriteria++;
-            let styleMatch = false;
-            let exactStyleMatch = false;
-            
             for (const style of features.styles) {
-                const normalizedStyle = normalizeText(style);
-                
-                // Tag'larda tam eşleşme
-                if (product.tags?.some(tag => normalizeText(tag.name) === normalizedStyle)) {
-                    styleMatch = true;
-                    exactStyleMatch = true;
+                if (text.includes(style)) {
+                    score += 20;
+                    matchCount++;
                     break;
                 }
-                
-                // Ürün adında tam eşleşme
-                if (productName.includes(normalizedStyle)) {
-                    styleMatch = true;
-                    exactStyleMatch = true;
-                    break;
-                }
-                
-                // Açıklamada eşleşme
-                if (productDesc.includes(normalizedStyle)) {
-                    styleMatch = true;
-                    break;
-                }
-            }
-            
-            if (styleMatch) {
-                if (exactStyleMatch) {
-                    score += 15; // Tam stil eşleşmesi için yüksek puan
-                } else {
-                    score += 8; // Açıklamada geçen stil için düşük puan
-                }
-                matchCount++;
             }
         }
 
-        // Malzeme eşleşmesi - Yeni eklenen
-        if (features.material && features.material.length > 0) {
+        // Ürün tipi eşleşmesi
+        if (features.productTypes.length > 0) {
             totalCriteria++;
-            let materialMatch = false;
-            let exactMaterialMatch = false;
-            
-            for (const material of features.material) {
-                const normalizedMaterial = normalizeText(material);
-                
-                // materialType alanında tam eşleşme
-                if (product.materialType && normalizeText(product.materialType) === normalizedMaterial) {
-                    materialMatch = true;
-                    exactMaterialMatch = true;
-                    break;
-                }
-                
-                // Ürün adında malzeme geçiyor
-                if (productName.includes(normalizedMaterial)) {
-                    materialMatch = true;
-                    exactMaterialMatch = true;
-                    break;
-                }
-                
-                // Açıklamada malzeme geçiyor
-                if (productDesc.includes(normalizedMaterial)) {
-                    materialMatch = true;
-                    break;
-                }
-                
-                // Extra attributes'ta malzeme geçiyor
-                if (product.extraAttributes && product.extraAttributes.materialType) {
-                    const extraMaterial = normalizeText(product.extraAttributes.materialType);
-                    if (extraMaterial === normalizedMaterial) {
-                        materialMatch = true;
-                        exactMaterialMatch = true;
-                        break;
-                    }
-                }
-            }
-            
-            if (materialMatch) {
-                if (exactMaterialMatch) {
-                    score += 25; // Tam malzeme eşleşmesi için yüksek puan
-                } else {
-                    score += 15; // Açıklamada geçen malzeme için düşük puan
-                }
-                matchCount++;
-            }
-        }
-
-        // Ürün tipi eşleşmesi - Gelişmiş optimizasyon
-        if (features.productTypes.length) {
-            totalCriteria++;
-            let typeMatch = false;
-            let exactProductTypeMatch = false;
-            
             for (const type of features.productTypes) {
-                const normalizedType = normalizeText(type);
-                
-                // Tam ürün tipi eşleşmesi (ürün adında tam olarak geçiyor)
-                if (productName.toLowerCase().includes(normalizedType)) {
-                    typeMatch = true;
-                    exactProductTypeMatch = true;
+                if (productName.includes(type) || productDesc.includes(type)) {
+                    score += 30;
+                    matchCount++;
                     break;
                 }
-                
-                // Ürün adında kelime bazında eşleşme
-                const productWords = productName.toLowerCase().split(' ');
-                if (productWords.includes(normalizedType)) {
-                    typeMatch = true;
-                    exactProductTypeMatch = true;
-                    break;
-                }
-                
-                // Açıklamada eşleşme (daha düşük öncelik)
-                if (productDesc.toLowerCase().includes(normalizedType)) {
-                    typeMatch = true;
-                    break;
-                }
-            }
-            
-            if (typeMatch) {
-                if (exactProductTypeMatch) {
-                    score += 25; // Tam ürün tipi eşleşmesi için yüksek puan
-                } else {
-                    score += 10; // Açıklamada geçen ürün tipi için düşük puan
-                }
-                matchCount++;
-            }
-            
-
-        }
-
-        // Oda boyutu eşleşmesi
-        if (features.roomSize) {
-            totalCriteria++;
-            const normalizedRoomSize = normalizeText(features.roomSize);
-            const productRoomSize = normalizeText(product.roomSize || '');
-            const extraRoomSize = normalizeText(product.extraAttributes?.roomSize || '');
-            
-            // Büyük oda için küçük/orta ürünleri ele
-            if (normalizedRoomSize === 'büyük') {
-                const productSize = extraRoomSize || productRoomSize;
-                if (productSize === 'küçük' || productSize === 'orta') {
-                    return { product, score: 0 }; // Bu ürünü ele
-                }
-            }
-            
-            // Küçük oda için büyük ürünleri ele
-            if (normalizedRoomSize === 'küçük') {
-                const productSize = extraRoomSize || productRoomSize;
-                if (productSize === 'büyük') {
-                    return { product, score: 0 }; // Bu ürünü ele
-                }
-            }
-            
-            const sizeMatch = prodRoomSize === normalizedRoomSize ||
-                extraRoomSize === normalizedRoomSize ||
-                productName.includes(normalizedRoomSize) ||
-                productDesc.includes(normalizedRoomSize);
-                
-            if (sizeMatch) { 
-                score += 15; // Oda boyutu eşleşmesi için daha yüksek puan
-                matchCount++; 
             }
         }
 
-        // Bütçe eşleşmesi
-        if (features.budget) {
+        // Oda eşleşmesi
+        if (features.rooms.length > 0) {
             totalCriteria++;
-            const parsedBudget = parseBudget(features.budget);
-            let budgetMatch = false;
-            if (parsedBudget && product.price) {
-                budgetMatch = product.price <= parsedBudget;
-            } else {
-                budgetMatch = prodBudget === normalizeText(features.budget) ||
-                    productName.includes(normalizeText(features.budget)) ||
-                    productDesc.includes(normalizeText(features.budget));
+            let roomMatched = false;
+            
+            for (const room of features.rooms) {
+                // Debug: Log room category matching attempts
+                console.log(`Oda eşleşme kontrolü: "${room}", categoryId: ${categoryMapping[room]}`);
+                
+                const categoryId = categoryMapping[room];
+                
+                if (categoryId && product.category && 
+                    (product.category.toString() === categoryId || 
+                     (product.category._id && product.category._id.toString() === categoryId))) {
+                    score += 25;
+                    matchCount++;
+                    roomMatched = true;
+                    console.log(`Oda eşleşmesi bulundu: ${product.name} - ${room}`);
+                    break;
+                }
+                
+                // Kategori ID'si yerine kategori adını da kontrol et
+                if (product.category && product.category.name && 
+                    product.category.name.toLowerCase().includes(room.toLowerCase())) {
+                    score += 25;
+                    matchCount++;
+                    roomMatched = true;
+                    console.log(`Oda adı eşleşmesi bulundu: ${product.name} - ${product.category.name}`);
+                    break;
+                }
+                
+                // Ayrıca ürün adı ve açıklamasında da ara
+                if (productName.includes(room) || productDesc.includes(room)) {
+                    score += 20; // Tam kategori eşleşmesinden biraz daha düşük puan
+                    matchCount++;
+                    roomMatched = true;
+                    console.log(`Ürün adı/açıklamasında oda eşleşmesi: ${product.name} - ${room}`);
+                    break;
+                }
             }
-            if (budgetMatch) { score += 8; matchCount++; }
+            
+            // Debug: Log if no match was found
+            if (!roomMatched) {
+                console.log(`Oda eşleşmesi bulunamadı: ${product.name}, aranan: ${features.rooms[0]}`);
+                console.log(`Ürün kategori: ${product.category && product.category.name ? product.category.name : product.category}`);
+            }
         }
 
         // Malzeme eşleşmesi
-        if (features.material && Array.isArray(features.material) && features.material.length > 0) {
+        if (features.material.length > 0) {
             totalCriteria++;
-            let materialMatch = false;
-            
             for (const material of features.material) {
-                if (material && typeof material === 'string') {
-                    const normalizedMaterial = normalizeText(material);
-                    if (prodMaterial === normalizedMaterial ||
-                        productName.includes(normalizedMaterial) ||
-                        productDesc.includes(normalizedMaterial)) {
-                        materialMatch = true;
-                        break;
-                    }
+                if (prodMaterial.includes(material) || text.includes(material)) {
+                    score += 15;
+                    matchCount++;
+                    break;
                 }
-            }
-            
-            if (materialMatch) { 
-                score += 8; 
-                matchCount++; 
             }
         }
 
-        // Garanti süresi eşleşmesi
-        if (features.warranty || (userInput && (userInput.includes('garanti') || userInput.includes('warranty')))) {
+        // Oda boyutu (roomSize) kontrolü - YENİ EKLENEN
+        if (features.roomSize) {
             totalCriteria++;
-            let requestedGaranti = '';
-            
-            // AI'dan gelen warranty bilgisini kontrol et
-            if (features.warranty) {
-                const warrantyMatch = features.warranty.match(/(\d+)\s*yıl/);
-                if (warrantyMatch) {
-                    requestedGaranti = warrantyMatch[1];
-                }
-            }
-            
-            // Eğer AI'dan gelmediyse userInput'tan çıkar
-            if (!requestedGaranti) {
-                const garantiMatch = userInput.match(/(\d+)\s*yıl/);
-                if (garantiMatch) {
-                    requestedGaranti = garantiMatch[1];
-                }
-            }
-            
-            if (requestedGaranti) {
-                const productGaranti = product.extraAttributes?.garantiSuresi || '';
-                const productGarantiMatch = productGaranti.match(/(\d+)\s*yıl/);
-                
-                if (productGarantiMatch && productGarantiMatch[1] === requestedGaranti) {
-                    score += 20; // Garanti süresi eşleşmesi için yüksek puan
-                    matchCount++;
-                } else if (productGarantiMatch) {
-                    // Garanti süresi eşleşmiyorsa ürünü ele
-                    return { product, score: 0 };
-                }
-            }
-        }
-
-        // Arama sorgusundaki kelimeler ürün adı/açıklamasında geçiyorsa ekstra puan
-        if (userInput) {
-            const queryWords = userInput.split(/\s+/).map(w => w.trim().toLowerCase()).filter(Boolean);
-            const allInNameOrDesc = queryWords.every(word =>
-                productName.includes(word) || productDesc.includes(word)
-            );
-            if (allInNameOrDesc) {
-                score += 20;
-                matchCount++;
-            }
-            // Arama sorgusu ürün adı/açıklamasında bir alt string olarak geçiyorsa ekstra puan
-            const normalizedQuery = userInput.trim().toLowerCase();
-            if (productName.includes(normalizedQuery) || productDesc.includes(normalizedQuery)) {
-                score += 20;
+            if (isProductSuitableForRoomSize(product, features.roomSize)) {
+                score += 20; // Oda boyutu eşleşmesi için puan
                 matchCount++;
             }
         }
 
-        // Arama sorgusunda moduleCount gibi bir ifade varsa ve ürünün moduleCount'u ile eşleşiyorsa ekstra puan
-        if (userInput) {
-            // Regex ile 1+1, 3+3+1+1 gibi ifadeleri bul
-            const moduleCountMatch = userInput.match(/\d(\+\d)+/g);
-            if (moduleCountMatch) {
-                const moduleCountQuery = moduleCountMatch[0];
-                // Ürünün moduleCount'u hem ana alan hem extraAttributes içinde olabilir
-                const productModuleCount = (product.moduleCount || (product.extraAttributes && product.extraAttributes.moduleCount) || '').toString().toLowerCase();
-                if (productModuleCount === moduleCountQuery) {
-                    score += 20;
-                    matchCount++;
-                }
-            }
-        }
-
-        // Arama sorgusunda X kapaklı gibi bir ifade varsa ve ürünün doorCount'u ile eşleşiyorsa ekstra puan
-        if (userInput) {
-            const doorCountMatch = userInput.match(/(\d+)\s*kapaklı/);
-            if (doorCountMatch) {
-                const doorCountQuery = parseInt(doorCountMatch[1], 10);
-                const productDoorCount = Number(product.doorCount || (product.extraAttributes && product.extraAttributes.doorCount));
-                if (productDoorCount === doorCountQuery) {
-                    score += 20;
-                    matchCount++;
-                }
-            }
-        }
-
-        // Ürün tipi kontrolü (zorunlu değil, sadece varsa kontrol et)
-        if (features.productTypes.length) {
-            const typeMatch = features.productTypes.some(type => {
-                const normalizedType = normalizeText(type);
-                if (type.includes(' ')) {
-                    return productName.includes(normalizedType) || 
-                           productDesc.includes(normalizedType);
-                }
-                const words = productName.split(' ');
-                return words.some(word => normalizeText(word) === normalizedType) || 
-                       productName.includes(normalizedType) ||
-                       productDesc.includes(normalizedType);
-            });
-            if (typeMatch) {
-                score += 15; // Ürün tipi eşleşmesi için puan
-                matchCount++;
-            }
-            // Ürün tipi eşleşmiyorsa skor 0 yapmıyoruz, diğer kriterlere göre değerlendiriyoruz
-        }
-
-        // Bütçe kontrolü: Eğer bütçe varsa ve ürün fiyatı bütçeden yüksekse, ürünü eliyoruz
+        // Bütçe kontrolü
         if (features.budget) {
-            const parsedBudget = parseBudget(features.budget);
-            if (parsedBudget && product.price && product.price > parsedBudget) {
-                return { product, score: 0 };
+            const budgetNum = parseBudget(features.budget);
+            if (budgetNum && budgetNum > 0) {
+                totalCriteria++;
+                if (product.price <= budgetNum) {
+                    score += 20;
+                    matchCount++;
+                } else if (product.price <= budgetNum * 1.2) {
+                    score += 10; // %20 tolerans
+                    matchCount += 0.5;
+                }
             }
         }
 
-        // Eğer sadece moduleCount eşleşmesi varsa ve başka kriter yoksa, yine de skoru sıfırdan büyük döndür
-        if (!totalCriteria && score > 0) return { product, score };
-        if (!totalCriteria) return { product, score: 0 };
-        if (!matchCount) return { product, score: 0 };
-        return { product, score: Math.round(score * (matchCount / totalCriteria)) };
+        // Renk uyumluluğu bonusu
+        if (features.colorCompatibility.length > 0) {
+            for (const compatibleColor of features.colorCompatibility) {
+                if (prodColor === compatibleColor) {
+                    score += 5;
+                    break;
+                }
+            }
+        }
+
+        // Eşleşme oranına göre final skor
+        const matchRatio = totalCriteria > 0 ? matchCount / totalCriteria : 0;
+        const finalScore = score * (1 + matchRatio);
+
+        return { product, score: finalScore, matchCount, totalCriteria, matchRatio };
     });
+
+    // Skor bilgilerini logla
+    const nonZeroScores = scoredProducts.filter(item => item.score > 0);
+    console.log(`Puanlanan ürün sayısı: ${nonZeroScores.length}`);
+    nonZeroScores.forEach((item, index) => {
+        if (index < 3) { // İlk 3 ürünün detayını göster
+            console.log(`Ürün ${index + 1}: ${item.product.name}, Skor: ${item.score.toFixed(2)}, Eşleşme: ${item.matchCount}/${item.totalCriteria}`);
+        }
+    });
+
+    return scoredProducts.sort((a, b) => b.score - a.score);
 }
 
 function generateRecommendationMessage(f) {

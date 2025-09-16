@@ -1,12 +1,9 @@
-const Product = require('../models/productModel');
-const mongoose = require('mongoose');
+const productModel = require('../models/productModel');
 
 // Get all products
 exports.getProducts = async (req, res) => {
     try {
-        const products = await Product.find()
-            .populate('category')
-            .populate('tags');
+        const products = await productModel.getAllProducts();
         res.status(200).json(products);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -18,23 +15,16 @@ exports.getProductsByCategory = async (req, res) => {
     try {
         const categoryId = req.params.categoryId;
         
-        // Önce tüm ürünleri al ve populate et
-        const products = await Product.find()
-            .populate('category')
-            .populate('tags');
-            
-        // Kategori ID'sine göre filtreleme
-        const filteredProducts = products.filter(product => 
-            product.category._id.toString() === categoryId
-        );
+        // Kategoriye göre ürünleri getir
+        const products = await productModel.getProductsByCategory(categoryId);
         
-        if (filteredProducts.length === 0) {
+        if (products.length === 0) {
             return res.status(404).json({ 
                 message: 'Bu kategoride ürün bulunamadı' 
             });
         }
         
-        res.status(200).json(filteredProducts);
+        res.status(200).json(products);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -45,26 +35,16 @@ exports.getProductsByTag = async (req, res) => {
     try {
         const tagId = req.params.tagId;
         
-        // ObjectId'ye çevirme
-        const objectId = new mongoose.Types.ObjectId(tagId);
+        // Etikete göre ürünleri getir
+        const products = await productModel.getProductsByTag(tagId);
         
-        // Önce tüm ürünleri al ve populate et
-        const products = await Product.find()
-            .populate('category')
-            .populate('tags');
-            
-        // Tag ID'sine göre filtreleme
-        const filteredProducts = products.filter(product => 
-            product.tags.some(tag => tag._id.toString() === tagId)
-        );
-        
-        if (filteredProducts.length === 0) {
+        if (products.length === 0) {
             return res.status(404).json({ 
                 message: 'Bu etikete sahip ürün bulunamadı' 
             });
         }
         
-        res.status(200).json(filteredProducts);
+        res.status(200).json(products);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -73,9 +53,7 @@ exports.getProductsByTag = async (req, res) => {
 // Get single product
 exports.getProduct = async (req, res) => {
     try {
-        const product = await Product.findById(req.params.id)
-            .populate('category')
-            .populate('tags');
+        const product = await productModel.getProductById(req.params.id);
         if (!product) {
             return res.status(404).json({ message: 'Ürün bulunamadı' });
         }
@@ -88,8 +66,8 @@ exports.getProduct = async (req, res) => {
 // Create product
 exports.createProduct = async (req, res) => {
     try {
-        const product = await Product.create(req.body);
-        res.status(201).json(product);
+        const result = await productModel.createProduct(req.body);
+        res.status(201).json(result);
     } catch (error) {
         res.status(400).json({ message: error.message });
     }
@@ -98,15 +76,8 @@ exports.createProduct = async (req, res) => {
 // Update product
 exports.updateProduct = async (req, res) => {
     try {
-        const product = await Product.findByIdAndUpdate(
-            req.params.id,
-            req.body,
-            { new: true, runValidators: true }
-        );
-        if (!product) {
-            return res.status(404).json({ message: 'Ürün bulunamadı' });
-        }
-        res.status(200).json(product);
+        const result = await productModel.updateProduct(req.params.id, req.body);
+        res.status(200).json(result);
     } catch (error) {
         res.status(400).json({ message: error.message });
     }
@@ -115,12 +86,9 @@ exports.updateProduct = async (req, res) => {
 // Delete product
 exports.deleteProduct = async (req, res) => {
     try {
-        const product = await Product.findByIdAndDelete(req.params.id);
-        if (!product) {
-            return res.status(404).json({ message: 'Ürün bulunamadı' });
-        }
+        const result = await productModel.deleteProduct(req.params.id);
         res.status(200).json({ message: 'Ürün başarıyla silindi' });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
-}; 
+};
